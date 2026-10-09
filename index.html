@@ -121,6 +121,7 @@
   .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
   .pill.ok, .pill.wait { color: #fff; }
   .pill.bad { color: #fca5a5; }
+  .views-pill { margin-left: 10px; vertical-align: middle; font-weight: 400; }
 
   /* ---- экран фильма: постер на фоне без чёрной подложки ---- */
   .hero { position: relative; margin: 0; padding: 0 0 8px; }
@@ -229,7 +230,7 @@
   .vp-ad-link:disabled { cursor: default; }
   .vp-ad-tag { position: absolute; left: 14px; top: 12px; color: #fff; font-size: 13px; text-shadow: 0 1px 4px #000; pointer-events: none; }
   .vp-ad-skip {
-    position: absolute; right: 16px; top: 50%; transform: translateY(-50%); z-index: 2;
+    position: absolute; right: 16px; bottom: 16px; top: auto; transform: none; z-index: 2;
     padding: 10px 16px; border: 0; border-radius: 12px; background: rgba(0,0,0,.55); color: #fff;
     font-size: 14px; font-weight: 600; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
@@ -240,6 +241,12 @@
   .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .sec-head h2 { margin: 0; }
   .gold { color: var(--gold); letter-spacing: 2px; }
+  .vip-infinity {
+    font-weight: 700; background: linear-gradient(90deg, #ffd700, #ff6ec7, #5eead4, #a78bfa, #ffd700);
+    background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: vipshine 3s linear infinite;
+  }
+  @keyframes vipshine { to { background-position: -300% 0; } }
   .ava { position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: none;
     background: var(--field); border: 1px solid var(--line); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--text); }
   .ava-lg { width: 84px; height: 84px; font-size: 30px; border-radius: 50%; }
@@ -460,6 +467,12 @@
     if (f.status === "failed") return '<span class="pill bad">Ошибка</span>';
     return '<span class="pill ok">Готов</span>';
   }
+  // VIP-статус для профиля и страницы VIP: бессрочный доступ персонала показывается как ∞
+  function vipStatusHtml(me) {
+    if (!me.vipActive) return "VIP нет";
+    if (!me.vipUntil) return 'VIP: <span class="vip-infinity">бессрочно ∞</span>';
+    return "VIP до " + esc(fmtDate(me.vipUntil));
+  }
 
   // ---- настройки плеера (сохраняются на устройстве) ----
   const PREFS_KEY = "film.player.prefs";
@@ -669,11 +682,6 @@
     const desc = f.description || "";
     const longDesc = desc.length > 220;
     const isSeries = f.kind === "series";
-    let episodeNav = "";
-    if (f.seriesId) {
-      const parent = await call(`/api/films/${f.seriesId}`).catch(() => null);
-      if (parent && parent.episodes) episodeNav = `<section class="section"><h2>${esc(parent.title)}</h2>${seasonsHtml(parent.episodes, f.id)}</section>`;
-    }
 
     app.innerHTML = `
       <section class="hero" style="--poster: url('${poster}')">
@@ -696,10 +704,9 @@
       </section>
 
       ${isSeries ? `<section class="section">${seasonsHtml(f.episodes || [], null)}</section>` : `<section class="section"><div id="player"></div></section>`}
-      ${episodeNav}
 
       <section class="section">
-        <div class="sec-head"><h2>Описание</h2><span class="pill">Просмотров: ${f.views}</span></div>
+        <h2>Описание <span class="pill views-pill">Просмотров: ${f.views}</span></h2>
         <p class="desc${longDesc ? " clamp" : ""}" id="desc">${esc(desc || "Описание пока не добавлено.")}</p>
         ${longDesc ? '<button class="linkbtn" id="descMore">Читать дальше</button>' : ""}
       </section>
@@ -1347,7 +1354,7 @@
         <p class="sub">Разовый донат, VIP не продлевается.</p>
         <div class="row">${S.config.donate.map((n) => payButton("donate", n, `${n} ★`, "btn ghost")).join("")}</div>
       </div>
-      ${S.me.vipActive && until ? `<p class="sub" style="margin-top:24px">Ваш VIP активен до ${esc(until)}</p>` : ""}`;
+      ${S.me.vipActive ? `<p class="sub" style="margin-top:24px">${until ? `Ваш VIP активен до ${esc(until)}` : `Ваш VIP активен: <span class="vip-infinity">бессрочно ∞</span>`}</p>` : ""}`;
   }
 
   async function viewProfile() {
@@ -1355,7 +1362,7 @@
       app.innerHTML = `<h1>Профиль</h1><p class="sub">Откройте приложение из Telegram, чтобы увидеть профиль.</p>`;
       return;
     }
-    const vipLine = S.me.vipActive ? `VIP до ${esc(fmtDate(S.me.vipUntil))}` : "VIP нет";
+    const vipLine = vipStatusHtml(S.me);
     const initial = esc(String(S.me.name || "?").trim().charAt(0).toUpperCase());
     app.innerHTML = `
       <div class="prof-head" style="display:flex;align-items:center;gap:18px;margin-bottom:10px">
@@ -1710,7 +1717,7 @@
       </div>`).join("");
     box.innerHTML = `<div class="glass">
       <h2>Реклама</h2>
-      <p class="sub">Ролик загружается без обработки. Показывается пользователям без настоящей оплаченной VIP-подписки (включая персонал — чтобы можно было проверить работу рекламы), когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</p>
+      <p class="sub">Ролик загружается без обработки. Показывается пользователям без VIP-доступа (персонал и реальные VIP-подписчики рекламу не видят), когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</p>
       <div id="ad-list">${rows || '<div class="sub" style="margin:0">Роликов пока нет</div>'}</div>
       <h2 style="margin-top:24px">Добавить ролик</h2>
       <label class="field"><span>Ролик (видео)</span><input type="file" id="adFile" accept="video/*"></label>
