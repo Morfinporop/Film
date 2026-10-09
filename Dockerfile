@@ -11,6 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py index.html ./
+COPY static ./static
 
 # Папка данных принадлежит непривилегированному пользователю
 RUN useradd -m app && mkdir -p /app/data && chown -R app /app

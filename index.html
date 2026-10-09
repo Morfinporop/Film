@@ -1,542 +1,859 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Фильмы</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --bg: #0a0a0c;
-      --text: #f4f4f5;
-      --muted: rgba(244, 244, 245, 0.56);
-      --line: rgba(255, 255, 255, 0.10);
-      --card: rgba(18, 18, 22, 0.72);
-      --accent: #ffffff;
-      --accent-text: #0a0a0c;
-      --radius: 18px;
-    }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; margin: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-      color: var(--text);
-      background: var(--bg) center / cover no-repeat fixed;
-      -webkit-font-smoothing: antialiased;
-    }
-    /* затемнение поверх фонового изображения для читаемости */
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(10, 10, 12, 0.62) 0%, rgba(10, 10, 12, 0.86) 45%, rgba(10, 10, 12, 0.96) 100%);
-      z-index: -1;
-    }
-    button, input { font: inherit; color: inherit; }
-    button { cursor: pointer; border: 0; background: none; padding: 0; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Фильмы</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/static/hls.min.js"></script>
+<style>
+  :root {
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --line: rgba(255,255,255,.1);
+    --panel: rgba(20,20,22,.62);
+    --accent: #ffffff;
+    --danger: #ef4444;
+    --gold: #e7c15a;
+    --bg-url: url("https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg");
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: #0b0b0c var(--bg-url) center / cover fixed no-repeat;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1;
+    background: linear-gradient(180deg, rgba(0,0,0,.72), rgba(0,0,0,.9));
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: inherit; }
+  img { display: block; }
 
-    .wrap { max-width: 560px; margin: 0 auto; padding: 28px 22px 120px; }
-    h1 { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; margin: 8px 2px 22px; }
-    .sub { color: var(--muted); font-size: 14px; margin: -14px 2px 22px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 20px 140px; }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
+  .section { margin-top: 36px; }
+  .glass {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 22px;
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); padding: 20px;
+  }
 
-    .search {
-      width: 100%;
-      background: transparent;
-      border: 0;
-      border-bottom: 1px solid var(--line);
-      padding: 12px 2px;
-      font-size: 16px;
-      outline: none;
-      margin-bottom: 26px;
-    }
-    .search::placeholder { color: var(--muted); }
+  /* ---- нижняя навигация ---- */
+  .nav {
+    position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(calc(100% - 48px), 380px);
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    padding: 8px; border-radius: 999px; z-index: 10;
+    background: rgba(28,28,30,.55);
+    border: 1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .nav button {
+    width: 52px; height: 52px; border-radius: 50%; border: 0;
+    background: transparent; color: var(--muted);
+    display: grid; place-items: center; transition: background .2s, color .2s;
+  }
+  .nav button.on { background: rgba(255,255,255,.16); color: #fff; }
+  .nav svg { width: 22px; height: 22px; }
+  .nav .hidden { display: none; }
 
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 16px; }
-    .card { text-align: left; min-width: 0; }
-    .poster {
-      width: 100%;
-      aspect-ratio: 2 / 3;
-      border-radius: var(--radius);
-      overflow: hidden;
-      background: linear-gradient(145deg, #2a2a30, #121216);
-      border: 1px solid var(--line);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 34px;
-      font-weight: 600;
-      color: rgba(255, 255, 255, 0.35);
-    }
-    .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .card-title { margin-top: 10px; font-size: 14px; font-weight: 550; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .card-meta { margin-top: 3px; font-size: 12px; color: var(--muted); }
-    .card-meta.vip { color: var(--text); }
+  /* ---- кнопки ---- */
+  .btn {
+    border: 0; border-radius: 999px; padding: 12px 20px; font-weight: 600; font-size: 15px;
+    background: #fff; color: #000; transition: opacity .2s;
+  }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.ghost { background: rgba(255,255,255,.1); color: var(--text); }
+  .btn.danger { background: rgba(239,68,68,.16); color: #fca5a5; }
+  .btn.small { padding: 8px 14px; font-size: 13px; }
+  .btn.round { width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .spacer { flex: 1; }
 
-    .list { display: flex; flex-direction: column; gap: 12px; }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 12px;
-      border-radius: var(--radius);
-      background: var(--card);
-      border: 1px solid var(--line);
-      text-align: left;
-      width: 100%;
-    }
-    .thumb { width: 52px; height: 74px; border-radius: 10px; overflow: hidden; flex: none; background: #1b1b20; }
-    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .row-body { min-width: 0; flex: 1; }
-    .row-title { font-size: 15px; font-weight: 580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .row-meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
-    .tag { font-size: 13px; color: var(--text); white-space: nowrap; }
+  /* ---- поля ---- */
+  input[type=text], input[type=search], input[type=number], input[type=date], input[type=url], select, textarea {
+    width: 100%; padding: 13px 16px; border-radius: 16px; border: 1px solid var(--line);
+    background: rgba(0,0,0,.35); outline: none; font-size: 15px;
+  }
+  input:focus, select:focus, textarea:focus { border-color: rgba(255,255,255,.35); }
+  textarea { resize: vertical; min-height: 96px; }
+  label.field { display: block; margin-bottom: 14px; }
+  label.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .check { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
 
-    .balance-card {
-      padding: 26px 24px;
-      border-radius: 24px;
-      background: var(--card);
-      border: 1px solid var(--line);
-      margin-bottom: 22px;
-    }
-    .balance-label { font-size: 14px; color: var(--muted); }
-    .balance-value { font-size: 48px; font-weight: 650; letter-spacing: -0.02em; margin-top: 6px; }
-    .balance-unit { font-size: 16px; color: var(--muted); font-weight: 500; margin-left: 6px; }
-    .pills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 30px; }
-    .pill {
-      height: 56px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: var(--card);
-      font-size: 15px;
-      font-weight: 580;
-    }
-    .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 2px 12px; }
+  /* ---- сетка фильмов ---- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
+  .card { cursor: pointer; text-decoration: none; }
+  .cover {
+    position: relative; aspect-ratio: 2 / 3; border-radius: 20px; overflow: hidden;
+    background: linear-gradient(160deg, #3f3f46, #18181b);
+    box-shadow: 0 12px 30px rgba(0,0,0,.4);
+  }
+  .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .vip-badge {
+    position: absolute; left: 12px; top: 12px; padding: 6px 12px; border-radius: 999px;
+    background: rgba(0,0,0,.55); color: var(--gold); font-size: 12px; font-weight: 650;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .cover .vip-text {
+    position: absolute; inset: auto 0 22% 0; text-align: center; font-size: 22px; font-weight: 800;
+    color: var(--gold); text-shadow: 0 2px 14px rgba(0,0,0,.8); letter-spacing: .04em; text-transform: uppercase;
+  }
+  .card .title { margin: 12px 4px 2px; font-weight: 600; font-size: 15px; line-height: 1.3; }
+  .card .meta { margin: 0 4px; color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.1); font-size: 12px; color: var(--muted); }
+  .pill.ok { color: #86efac; }
+  .pill.wait { color: #fde68a; }
+  .pill.bad { color: #fca5a5; }
 
-    .nav {
-      position: fixed;
-      left: 0; right: 0; bottom: 0;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
-      background: rgba(10, 10, 12, 0.72);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      border-top: 1px solid var(--line);
-      z-index: 5;
-    }
-    .nav button { font-size: 14px; color: var(--muted); padding: 8px 0; font-weight: 550; }
-    .nav button.on { color: var(--text); }
+  /* ---- экран фильма ---- */
+  .hero { position: relative; margin: -28px -20px 0; padding: 28px 20px 32px; overflow: hidden; border-radius: 0 0 28px 28px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40px; z-index: -2;
+    background: var(--poster) center / cover no-repeat; filter: blur(34px) brightness(.45); transform: scale(1.1);
+  }
+  .hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(0,0,0,.2), rgba(10,10,12,.92)); }
+  .hero-inner { display: grid; grid-template-columns: 150px 1fr; gap: 20px; align-items: end; }
+  .hero .cover { border-radius: 18px; }
+  .hero h1 { font-size: 24px; }
+  .facts { color: var(--muted); font-size: 14px; line-height: 1.8; margin-top: 8px; }
+  .facts b { color: var(--text); font-weight: 500; }
+  .desc { line-height: 1.65; color: #d4d4d8; white-space: pre-wrap; font-size: 15px; margin: 0; }
+  .player { width: 100%; border-radius: 20px; background: #000; overflow: hidden; aspect-ratio: 16 / 9; }
+  .player video, .player iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .player.vertical { aspect-ratio: 9 / 16; max-height: 70vh; margin: 0 auto; width: auto; }
+  .qualities { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .qualities button {
+    border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 13px;
+  }
+  .qualities button.on { background: #fff; color: #000; font-weight: 600; }
+  .locked {
+    aspect-ratio: 16 / 9; border-radius: 20px; display: grid; place-items: center; text-align: center; padding: 24px;
+    background: rgba(0,0,0,.5); border: 1px solid var(--line);
+  }
+  .stars { display: inline-flex; gap: 4px; }
+  .stars button { border: 0; background: none; font-size: 26px; line-height: 1; color: #3f3f46; padding: 0 2px; }
+  .stars button.on { color: var(--gold); }
+  .item { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .item:last-child { border-bottom: 0; }
+  .item .head { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+  .item .head b { color: var(--text); font-weight: 600; }
+  .item p { margin: 6px 0 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
-    /* карточка фильма (экран просмотра) */
-    .sheet {
-      position: fixed;
-      inset: 0;
-      background: rgba(8, 8, 10, 0.97);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      overflow-y: auto;
-      z-index: 10;
-      display: none;
-    }
-    .sheet.open { display: block; }
-    .sheet-in { max-width: 560px; margin: 0 auto; padding: 22px 22px 60px; }
-    .back { font-size: 15px; color: var(--muted); padding: 6px 0; margin-bottom: 14px; }
-    .player {
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      border-radius: 18px;
-      overflow: hidden;
-      background: #000;
-      border: 1px solid var(--line);
-      margin-bottom: 22px;
-    }
-    .player video, .player iframe { width: 100%; height: 100%; border: 0; display: block; }
-    .player-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; padding: 16px; text-align: center; }
-    .sheet h2 { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 8px; }
-    .sheet .meta { color: var(--muted); font-size: 14px; margin-bottom: 26px; }
-    .btn {
-      width: 100%;
-      height: 54px;
-      border-radius: 16px;
-      background: var(--accent);
-      color: var(--accent-text);
-      font-size: 16px;
-      font-weight: 620;
-    }
-    .btn:disabled { opacity: 0.4; }
-    .btn-ghost {
-      width: 100%;
-      height: 50px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      margin-top: 12px;
-      font-size: 15px;
-      font-weight: 550;
-    }
-    .note { margin-top: 16px; font-size: 13px; color: var(--muted); line-height: 1.5; min-height: 1em; }
-
-    .toast {
-      position: fixed;
-      left: 50%;
-      bottom: 96px;
-      transform: translateX(-50%);
-      background: rgba(30, 30, 36, 0.96);
-      border: 1px solid var(--line);
-      padding: 12px 18px;
-      border-radius: 14px;
-      font-size: 14px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s;
-      z-index: 20;
-      max-width: calc(100% - 40px);
-      text-align: center;
-    }
-    .toast.show { opacity: 1; }
-    .empty { color: var(--muted); font-size: 15px; padding: 40px 0; text-align: center; }
-    .hidden { display: none !important; }
-  </style>
+  /* ---- тосты, модалка ---- */
+  .toast {
+    position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 50;
+    background: rgba(24,24,27,.9); border: 1px solid var(--line); padding: 12px 18px; border-radius: 999px;
+    font-size: 14px; max-width: calc(100% - 40px); text-align: center; display: none;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  }
+  .toast.show { display: block; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; font-size: 15px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .tabs button { border: 0; border-radius: 999px; padding: 9px 16px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 14px; }
+  .tabs button.on { background: #fff; color: #000; font-weight: 600; }
+  .list-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .list-row:last-child { border-bottom: 0; }
+  .list-row .info { flex: 1; min-width: 0; }
+  .list-row .info b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-row .info small { color: var(--muted); font-size: 13px; }
+  .thumb { width: 44px; height: 64px; border-radius: 10px; overflow: hidden; background: #27272a; flex: none; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .progress { height: 6px; background: rgba(255,255,255,.1); border-radius: 999px; overflow: hidden; margin-top: 10px; display: none; }
+  .progress div { height: 100%; width: 0; background: #fff; transition: width .2s; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .stat { padding: 16px; border-radius: 18px; background: rgba(0,0,0,.3); border: 1px solid var(--line); }
+  .stat b { display: block; font-size: 22px; font-weight: 650; }
+  .stat small { color: var(--muted); font-size: 13px; }
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .plan { padding: 20px; border-radius: 22px; background: rgba(0,0,0,.35); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+  .plan .price { font-size: 26px; font-weight: 700; }
+  .plan small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .hidden { display: none !important; }
+  @media (max-width: 480px) {
+    .plans { grid-template-columns: 1fr; }
+    .hero-inner { grid-template-columns: 116px 1fr; gap: 14px; }
+    .hero h1 { font-size: 20px; }
+  }
+</style>
 </head>
 <body>
-  <main class="wrap">
-    <section id="view-catalog">
-      <h1>Каталог</h1>
-      <input id="search" class="search" type="search" placeholder="Поиск" autocomplete="off" />
-      <div id="grid-catalog" class="grid"></div>
-    </section>
+<div class="wrap" id="app"></div>
 
-    <section id="view-vip" class="hidden">
-      <h1>VIP</h1>
-      <p class="sub">Фильмы открываются за звёзды Telegram</p>
-      <div id="list-vip" class="list"></div>
-    </section>
-
-    <section id="view-balance" class="hidden">
-      <h1>Баланс</h1>
-      <div class="balance-card">
-        <div class="balance-label">Доступно</div>
-        <div class="balance-value"><span id="balance">0</span><span class="balance-unit">звёзд</span></div>
-      </div>
-      <div class="section-title">Пополнить</div>
-      <div id="topups" class="pills"></div>
-      <div class="section-title">Мои фильмы</div>
-      <div id="list-owned" class="list"></div>
-    </section>
-  </main>
-
-  <nav class="nav">
-    <button data-view="catalog" class="on" type="button">Каталог</button>
-    <button data-view="vip" type="button">VIP</button>
-    <button data-view="balance" type="button">Баланс</button>
-  </nav>
-
-  <div id="sheet" class="sheet">
-    <div class="sheet-in">
-      <button id="back" class="back" type="button">Назад</button>
-      <div id="player" class="player"></div>
-      <h2 id="sheet-title"></h2>
-      <div id="sheet-meta" class="meta"></div>
-      <button id="action" class="btn" type="button"></button>
-      <button id="open-external" class="btn-ghost hidden" type="button">Открыть в браузере</button>
-      <div id="note" class="note"></div>
-    </div>
-  </div>
-
-  <div id="toast" class="toast"></div>
+<nav class="nav" id="nav">
+  <button data-go="catalog" title="Каталог" aria-label="Каталог">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+  </button>
+  <button data-go="search" title="Поиск" aria-label="Поиск">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+  </button>
+  <button data-go="vip" title="VIP" aria-label="VIP">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3.1-5.4 3.1 1.2-6L3.3 9.3l6.1-.7z"/></svg>
+  </button>
+  <button data-go="profile" title="Профиль" aria-label="Профиль">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" stroke-linecap="round"/></svg>
+  </button>
+  <button data-go="admin" id="navAdmin" class="hidden" title="Админ-панель" aria-label="Админ-панель">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4" stroke-linecap="round"/></svg>
+  </button>
+</nav>
+<div class="toast" id="toast"></div>
 
 <script>
 (() => {
+  "use strict";
   const tg = window.Telegram && window.Telegram.WebApp;
-  if (tg) { tg.ready(); tg.expand(); }
-  const initData = tg ? tg.initData : "";
+  if (tg) { try { tg.ready(); tg.expand(); } catch (_) {} }
+  const app = document.getElementById("app");
+  const nav = document.getElementById("nav");
 
-  const S = { config: null, films: [], me: null, film: null, query: "", view: "catalog" };
-  const $ = (id) => document.getElementById(id);
+  const S = {
+    me: { guest: true }, config: null, films: [], route: "catalog", hls: null, timer: null, adminTab: "films",
+    search: "", editId: null,
+  };
 
-  function toast(text) {
-    const t = $("toast");
-    t.textContent = text;
-    t.classList.add("show");
-    clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
-  }
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const toast = (text) => {
+    const el = document.getElementById("toast");
+    el.textContent = text; el.classList.add("show");
+    clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), 2800);
+  };
+  const ERRORS = {
+    auth: "Откройте приложение из Telegram", forbidden: "Недостаточно прав", not_found: "Не найдено",
+    vip_required: "Нужна подписка VIP", bad_request: "Проверьте данные", bad_rating: "Оценка от 1 до 5",
+    empty: "Пустой текст", title_required: "Укажите название", bad_url: "Некорректная ссылка",
+    video_required: "Выберите видеофайл", poster_required: "Выберите обложку", bad_kind: "Неверный тип",
+    bad_role: "Неверная роль", bad_id: "Неверный ID", bad_days: "Неверный срок", owner: "Это владелец",
+    not_refundable: "Возврат невозможен", telegram_refused: "Telegram отклонил возврат", already: "Эта роль уже есть",
+    bad_amount: "Неверная сумма", processing: "Идёт обработка",
+  };
+  const errText = (code) => ERRORS[code] || "Ошибка, попробуйте ещё раз";
 
-  async function api(path, options = {}) {
-    const headers = { "X-Init-Data": initData };
-    if (options.body) headers["Content-Type"] = "application/json";
-    const res = await fetch(path, { ...options, headers });
+  function initData() { return (tg && tg.initData) || ""; }
+
+  async function api(path, opts = {}) {
+    const headers = { "X-Init-Data": initData() };
+    let body = opts.body;
+    if (body && !(body instanceof FormData)) { headers["Content-Type"] = "application/json"; body = JSON.stringify(body); }
+    const res = await fetch(path, { method: opts.method || (body ? "POST" : "GET"), headers, body });
     let data = null;
-    try { data = await res.json(); } catch (e) { data = null; }
-    return { ok: res.ok, status: res.status, data };
+    try { data = await res.json(); } catch (_) {}
+    return { ok: res.ok, status: res.status, data: data || {} };
   }
 
-  const isOwned = (film) => film.price <= 0 || (S.me && S.me.owned.includes(film.id));
-  const priceText = (film) => (film.price <= 0 ? "Бесплатно" : `${film.price} звёзд`);
+  async function call(path, opts) {
+    const r = await api(path, opts);
+    if (!r.ok) { toast(errText(r.data.error)); throw new Error(r.data.error || r.status); }
+    return r.data;
+  }
 
-  function posterNode(film) {
-    const box = document.createElement("div");
-    box.className = "poster";
-    if (film.hasBanner) {
-      const img = document.createElement("img");
-      img.loading = "lazy";
-      img.alt = "";
-      img.src = `/api/banner/${film.id}`;
-      box.appendChild(img);
-    } else {
-      box.textContent = film.title.trim().charAt(0).toUpperCase() || "";
+  function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso.replace(" ", "T") + "Z");
+    return isNaN(d) ? iso : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  }
+  function fmtRelease(s) {
+    if (!s) return "не указана";
+    const d = new Date(s + "T00:00:00");
+    return isNaN(d) ? s : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  }
+  function duration(sec) {
+    if (!sec) return "";
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  function statusPill(f) {
+    if (f.status === "processing") return '<span class="pill wait">Обработка</span>';
+    if (f.status === "failed") return '<span class="pill bad">Ошибка</span>';
+    return '<span class="pill ok">Готов</span>';
+  }
+
+  // ---- маршрут ----
+  function parseRoute() {
+    const h = (location.hash || "").replace(/^#\/?/, "");
+    const parts = h.split("/").filter(Boolean);
+    if (parts[0] === "film" && parts[1]) return { name: "film", id: parts[1] };
+    if (parts[0] === "admin") {
+      if (parts[1] === "upload") return { name: "admin", tab: "upload" };
+      if (parts[1] === "film" && parts[2]) return { name: "admin", tab: "films", edit: parts[2] };
+      if (parts[1] === "users" || parts[1] === "sales") return { name: "admin", tab: parts[1] };
+      return { name: "admin", tab: "films" };
     }
-    return box;
+    if (["search", "vip", "profile"].includes(parts[0])) return { name: parts[0] };
+    return { name: "catalog" };
   }
 
-  function filmCard(film) {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "card";
-    card.appendChild(posterNode(film));
-    const title = document.createElement("div");
-    title.className = "card-title";
-    title.textContent = film.title;
-    const meta = document.createElement("div");
-    meta.className = "card-meta" + (film.price > 0 ? " vip" : "");
-    meta.textContent = film.price > 0 && isOwned(film) ? "Открыт" : priceText(film);
-    card.append(title, meta);
-    card.addEventListener("click", () => openFilm(film.id));
-    return card;
-  }
+  function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 
-  function filmRow(film) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "row";
-    const thumb = document.createElement("div");
-    thumb.className = "thumb";
-    if (film.hasBanner) {
-      const img = document.createElement("img");
-      img.loading = "lazy";
-      img.alt = "";
-      img.src = `/api/banner/${film.id}`;
-      thumb.appendChild(img);
-    }
-    const body = document.createElement("div");
-    body.className = "row-body";
-    const t = document.createElement("div");
-    t.className = "row-title";
-    t.textContent = film.title;
-    const m = document.createElement("div");
-    m.className = "row-meta";
-    m.textContent = film.kind === "video" ? "В боте и в приложении" : "По ссылке";
-    body.append(t, m);
-    const tag = document.createElement("div");
-    tag.className = "tag";
-    tag.textContent = isOwned(film) ? "Открыт" : priceText(film);
-    row.append(thumb, body, tag);
-    row.addEventListener("click", () => openFilm(film.id));
-    return row;
-  }
-
-  function renderCatalog() {
-    const q = S.query.toLowerCase();
-    const grid = $("grid-catalog");
-    grid.textContent = "";
-    const list = S.films.filter((f) => !q || f.title.toLowerCase().includes(q));
-    if (!list.length) { grid.innerHTML = '<div class="empty">Ничего не найдено</div>'; return; }
-    list.forEach((f) => grid.appendChild(filmCard(f)));
-  }
-
-  function renderVip() {
-    const box = $("list-vip");
-    box.textContent = "";
-    const list = S.films.filter((f) => f.price > 0);
-    if (!list.length) { box.innerHTML = '<div class="empty">VIP-фильмов пока нет</div>'; return; }
-    list.forEach((f) => box.appendChild(filmRow(f)));
-  }
-
-  function renderBalance() {
-    $("balance").textContent = S.me ? S.me.balance : "0";
-    const topBox = $("topups");
-    topBox.textContent = "";
-    (S.config ? S.config.topups : []).forEach((n) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "pill";
-      b.textContent = `${n} звёзд`;
-      b.addEventListener("click", () => topUp(n));
-      topBox.appendChild(b);
-    });
-    const owned = $("list-owned");
-    owned.textContent = "";
-    const list = S.films.filter((f) => S.me && S.me.owned.includes(f.id));
-    if (!list.length) { owned.innerHTML = '<div class="empty">Пока ничего не куплено</div>'; return; }
-    list.forEach((f) => owned.appendChild(filmRow(f)));
-  }
-
-  function showView(name) {
-    S.view = name;
-    ["catalog", "vip", "balance"].forEach((v) => $(`view-${v}`).classList.toggle("hidden", v !== name));
-    document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
-    window.scrollTo(0, 0);
-  }
-
-  // ---------- экран фильма ----------
-  function openFilm(id) {
-    const film = S.films.find((f) => f.id === id);
-    if (!film) return;
-    S.film = film;
-    $("sheet-title").textContent = film.title;
-    $("sheet-meta").textContent = `${film.kind === "video" ? "Видео" : "Ссылка"} · ${priceText(film)}`;
-    $("player").textContent = "";
-    const empty = document.createElement("div");
-    empty.className = "player-empty";
-    empty.textContent = isOwned(film) ? "Нажмите «Смотреть»" : "Фильм закрыт";
-    $("player").appendChild(empty);
-    $("open-external").classList.add("hidden");
-    $("note").textContent = "";
-    $("sheet").classList.add("open");
-    history.replaceState(null, "", `?film=${film.id}`);
-    setAction();
-  }
-
-  function closeFilm() {
-    $("sheet").classList.remove("open");
-    $("player").textContent = "";
-    history.replaceState(null, "", location.pathname);
-    S.film = null;
-  }
-
-  function setAction() {
-    const film = S.film;
-    const btn = $("action");
-    if (!film) return;
-    if (isOwned(film)) {
-      btn.textContent = "Смотреть";
-      btn.disabled = false;
-      btn.onclick = play;
-    } else {
-      btn.textContent = `Купить за ${film.price} звёзд`;
-      btn.disabled = !initData;
-      btn.onclick = buy;
-      if (!initData) $("note").textContent = "Покупка доступна в Telegram.";
-    }
-  }
-
-  async function play() {
-    const film = S.film;
-    if (!initData) { $("note").textContent = "Откройте приложение в Telegram, чтобы смотреть."; return; }
-    const btn = $("action");
-    btn.disabled = true;
-    btn.textContent = "Загрузка…";
-    const r = await api(`/api/films/${film.id}/play`, { method: "POST" });
-    btn.disabled = false;
-    btn.textContent = "Смотреть";
-    if (!r.ok) {
-      const msg = {
-        locked: "Фильм закрыт. Откройте его за звёзды.",
-        too_large: "Файл больше 20 МБ, в приложении его не открыть. Смотрите в боте.",
-        media: "Не удалось загрузить видео. Попробуйте позже.",
-        auth: "Откройте приложение в Telegram.",
-      }[r.data && r.data.error] || "Ошибка. Попробуйте позже.";
-      $("note").textContent = msg;
-      return;
-    }
-    const box = $("player");
-    box.textContent = "";
-    if (r.data.kind === "video") {
-      const v = document.createElement("video");
-      v.controls = true;
-      v.playsInline = true;
-      v.preload = "metadata";
-      v.src = r.data.src;
-      box.appendChild(v);
-    } else {
-      const f = document.createElement("iframe");
-      f.src = r.data.src;
-      f.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
-      f.allowFullscreen = true;
-      box.appendChild(f);
-      $("open-external").classList.remove("hidden");
-      $("open-external").onclick = () => (tg ? tg.openLink(r.data.url) : window.open(r.data.url, "_blank"));
-      $("note").textContent = "Если видео не открывается здесь, откройте его в браузере.";
-    }
-  }
-
-  async function buy() {
-    const film = S.film;
-    const btn = $("action");
-    btn.disabled = true;
-    const r = await api(`/api/films/${film.id}/buy`, { method: "POST" });
-    if (r.ok && r.data.ok) {
-      toast("Фильм открыт");
-      await refreshMe();
-      setAction();
-      return;
-    }
-    if (r.ok && r.data.invoice) {
-      payInvoice(r.data.invoice);
-    } else {
-      toast("Не удалось создать оплату");
-    }
-    btn.disabled = false;
-  }
-
-  async function topUp(amount) {
-    if (!initData) { toast("Пополнение доступно в Telegram"); return; }
-    const r = await api("/api/topup", { method: "POST", body: JSON.stringify({ amount }) });
-    if (r.ok && r.data.invoice) payInvoice(r.data.invoice);
-    else toast("Не удалось создать оплату");
-  }
-
-  function payInvoice(link) {
-    if (!tg || !tg.openInvoice) { tg ? tg.openLink(link) : window.open(link, "_blank"); return; }
-    tg.openInvoice(link, async (status) => {
-      if (status === "paid") {
-        toast("Оплата прошла");
-        // уведомление об оплате приходит боту; подождём и обновим баланс
-        for (let i = 0; i < 6; i++) {
-          await new Promise((res) => setTimeout(res, 1000));
-          await refreshMe();
-          if (S.film) setAction();
-        }
-      } else if (status === "failed") {
-        toast("Оплата не прошла");
-      }
+  function setNav(name) {
+    nav.querySelectorAll("button[data-go]").forEach((b) => {
+      const key = b.dataset.go;
+      b.classList.toggle("on", key === name || (name === "film" && key === "catalog"));
     });
   }
 
-  async function refreshMe() {
-    const r = await api("/api/me");
-    if (r.ok) S.me = r.data;
-    renderBalance();
-    renderCatalog();
-    renderVip();
+  nav.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-go]");
+    if (b) go("#/" + b.dataset.go);
+  });
+
+  function stopPlayer() {
+    if (S.hls) { try { S.hls.destroy(); } catch (_) {} S.hls = null; }
   }
 
-  async function loadFilms() {
-    const r = await fetch("/api/films");
-    S.films = r.ok ? await r.json() : [];
-    renderCatalog();
-    renderVip();
-    renderBalance();
-  }
+  window.addEventListener("hashchange", render);
 
-  // ---------- события ----------
-  document.querySelectorAll(".nav button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
-  $("search").addEventListener("input", (e) => { S.query = e.target.value.trim(); renderCatalog(); });
-  $("back").addEventListener("click", closeFilm);
-
-  (async () => {
+  async function render() {
+    stopPlayer();
+    clearInterval(S.timer); S.timer = null;
+    const r = parseRoute();
+    S.route = r.name;
+    setNav(r.name);
+    if (r.name === "admin" && !(S.me.canUpload)) { go("#/catalog"); return; }
+    if (r.name === "admin" && r.tab === "users" && !S.me.canManage) { go("#/admin"); return; }
+    if (r.name === "admin" && r.tab === "sales" && !S.me.isOwner) { go("#/admin"); return; }
     try {
-      const cfgRes = await fetch("/api/config");
-      S.config = await cfgRes.json();
-      if (S.config.background) {
-        document.body.style.backgroundImage = `url("${S.config.background}")`;
-      }
-      await loadFilms();
-      if (initData) await refreshMe();
-      const id = Number(new URLSearchParams(location.search).get("film"));
-      if (id && S.films.some((f) => f.id === id)) openFilm(id);
-    } catch (e) {
-      toast("Не удалось загрузить каталог");
+      if (r.name === "catalog") await viewCatalog();
+      else if (r.name === "search") await viewSearch();
+      else if (r.name === "film") await viewFilm(r.id);
+      else if (r.name === "vip") viewVip();
+      else if (r.name === "profile") viewProfile();
+      else if (r.name === "admin") await viewAdmin(r);
+    } catch (e) { console.error(e); }
+    window.scrollTo({ top: 0 });
+  }
+
+  async function loadMe() {
+    S.me = await call("/api/me").catch(() => ({ guest: true }));
+    S.me.guest = S.me.guest !== false;
+    nav.querySelector("#navAdmin").classList.toggle("hidden", !S.me.canUpload);
+  }
+  async function loadConfig() {
+    S.config = await call("/api/config").catch(() => null) || { prices: { vipMonth: 100, vipYear: 900, editor: 500, admin: 2000 }, donate: [50, 100, 250, 500] };
+  }
+
+  // ---- каталог и поиск ----
+  function filmCard(f) {
+    const cover = f.hasPoster
+      ? `<img src="/api/films/${f.id}/poster" alt="" loading="lazy" onerror="this.remove()">`
+      : "";
+    return `<a class="card" href="#/film/${f.id}">
+      <div class="cover">${cover}
+        ${f.isVip ? '<span class="vip-badge">VIP</span><div class="vip-text">Для VIP</div>' : ""}
+      </div>
+      <div class="title">${esc(f.title)}</div>
+      <div class="meta">${esc(f.releaseDate ? f.releaseDate.slice(0, 4) : "")}${f.creator ? " · " + esc(f.creator) : ""}</div>
+    </a>`;
+  }
+
+  async function viewCatalog() {
+    S.films = await call("/api/films").catch(() => []);
+    app.innerHTML = `
+      <h1>Фильмы</h1>
+      <p class="sub">Смотрите фильмы и сериалы в лучшем качестве. Выбирайте 360p, 720p или 1080p.</p>
+      ${S.films.length ? `<div class="grid">${S.films.map(filmCard).join("")}</div>` : '<div class="empty">Пока нет фильмов</div>'}`;
+  }
+
+  async function viewSearch() {
+    if (!S.films.length) S.films = await call("/api/films").catch(() => []);
+    app.innerHTML = `
+      <h1>Поиск</h1>
+      <p class="sub">Название, автор или описание.</p>
+      <input type="search" id="q" placeholder="Что посмотреть?" value="${esc(S.search)}" autocomplete="off">
+      <div class="section" id="res"></div>`;
+    const input = $("#q");
+    const draw = () => {
+      S.search = input.value.trim().toLowerCase();
+      const list = S.films.filter((f) => !S.search || [f.title, f.creator, f.description].join(" ").toLowerCase().includes(S.search));
+      $("#res").innerHTML = list.length ? `<div class="grid">${list.map(filmCard).join("")}</div>` : '<div class="empty">Ничего не найдено</div>';
+    };
+    input.addEventListener("input", draw);
+    draw();
+    input.focus();
+  }
+
+  // ---- фильм ----
+  async function viewFilm(id) {
+    const f = await call(`/api/films/${id}`).catch(() => null);
+    S.filmId = id;
+    if (!f) { app.innerHTML = '<div class="empty">Фильм не найден</div>'; return; }
+    const poster = f.hasPoster ? `/api/films/${f.id}/poster` : "";
+    const starsHtml = (n, set) => [1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}" class="${i <= n ? "on" : ""}" ${set ? "" : "disabled"}>★</button>`).join("");
+    const reviewsHtml = f.reviews.length
+      ? f.reviews.map((r) => `<div class="item">
+          <div class="head"><b>${esc(r.name)}</b><span>${"★".repeat(r.rating)}</span><span>${esc(fmtDate(r.date))}</span>
+          ${r.canDelete ? `<span class="spacer"></span><button class="btn ghost small" data-del-review="${r.id}">Удалить</button>` : ""}</div>
+          ${r.text ? `<p>${esc(r.text)}</p>` : ""}</div>`).join("")
+      : '<div class="sub" style="margin:0">Отзывов пока нет</div>';
+    const commentsHtml = f.comments.length
+      ? f.comments.map((c) => `<div class="item">
+          <div class="head"><b>${esc(c.name)}</b><span>${esc(fmtDate(c.date))}</span>
+          ${c.canDelete ? `<span class="spacer"></span><button class="btn ghost small" data-del-comment="${c.id}">Удалить</button>` : ""}</div>
+          <p>${esc(c.text)}</p></div>`).join("")
+      : '<div class="sub" style="margin:0">Комментариев пока нет</div>';
+    const canWrite = !S.me.guest && !f.locked;
+
+    app.innerHTML = `
+      <section class="hero" style="--poster: url('${poster}')">
+        <div class="hero-inner">
+          <div class="cover">
+            ${poster ? `<img src="${poster}" alt="" onerror="this.remove()">` : ""}
+            ${f.isVip ? '<span class="vip-badge">VIP</span><div class="vip-text">Для VIP</div>' : ""}
+          </div>
+          <div>
+            <h1>${esc(f.title)}</h1>
+            <div class="facts">
+              <div>Дата выхода: <b>${esc(fmtRelease(f.releaseDate))}</b></div>
+              <div>Автор: <b>${esc(f.creator || "не указан")}</b></div>
+              <div>Оценка: <b>${f.reviewCount ? f.rating.toFixed(1) + " (" + f.reviewCount + ")" : "нет"}</b></div>
+              ${f.duration ? `<div>Длительность: <b>${duration(f.duration)}</b></div>` : ""}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div id="player"></div>
+      </section>
+
+      <section class="section">
+        <h2>Описание</h2>
+        <p class="desc">${esc(f.description || "Описание пока не добавлено.")}</p>
+      </section>
+
+      <section class="section">
+        <h2>Отзывы</h2>
+        ${canWrite ? `<div class="glass" id="reviewForm">
+          <div class="stars" id="starPick">${starsHtml(0, true)}</div>
+          <label class="field" style="margin-top:14px"><textarea id="reviewText" maxlength="1000" placeholder="Ваш отзыв"></textarea></label>
+          <button class="btn" id="sendReview">Оставить отзыв</button>
+        </div>` : ""}
+        <div class="glass" style="margin-top:14px">${reviewsHtml}</div>
+      </section>
+
+      <section class="section">
+        <h2>Комментарии</h2>
+        ${canWrite ? `<div class="row" style="margin-bottom:14px">
+          <input type="text" id="commentText" maxlength="1000" placeholder="Написать комментарий" style="flex:1">
+          <button class="btn round" id="sendComment" aria-label="Отправить">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l16-8-6 16-2-7z" stroke-linejoin="round"/></svg>
+          </button></div>` : ""}
+        <div class="glass">${commentsHtml}</div>
+      </section>`;
+
+    renderPlayer(f);
+    bindFilm(f);
+  }
+
+  function bindFilm(f) {
+    let stars = 0;
+    const pick = $("#starPick");
+    if (pick) {
+      pick.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-star]");
+        if (!b) return;
+        stars = Number(b.dataset.star);
+        pick.querySelectorAll("button").forEach((x) => x.classList.toggle("on", Number(x.dataset.star) <= stars));
+      });
+      $("#sendReview").onclick = async () => {
+        if (!stars) { toast("Выберите оценку"); return; }
+        await call(`/api/films/${f.id}/reviews`, { body: { rating: stars, text: $("#reviewText").value } }).catch(() => null);
+        toast("Отзыв сохранён"); viewFilm(f.id);
+      };
     }
+    const sendC = $("#sendComment");
+    if (sendC) sendC.onclick = async () => {
+      const text = $("#commentText").value.trim();
+      if (!text) return;
+      await call(`/api/films/${f.id}/comments`, { body: { text } }).catch(() => null);
+      viewFilm(f.id);
+    };
+  }
+
+  // делегированное удаление отзывов и комментариев (один обработчик на весь документ)
+  app.addEventListener("click", async (e) => {
+    const rv = e.target.closest("[data-del-review]");
+    const cm = e.target.closest("[data-del-comment]");
+    if (!rv && !cm) return;
+    const path = rv ? `/api/reviews/${rv.dataset.delReview}/delete` : `/api/comments/${cm.dataset.delComment}/delete`;
+    await call(path, { body: {} }).catch(() => null);
+    if (S.filmId) viewFilm(S.filmId);
+  });
+
+  async function renderPlayer(f) {
+    const box = $("#player");
+    if (f.locked) {
+      box.innerHTML = `<div class="locked"><div>
+        <h2>Этот фильм для VIP</h2>
+        <p class="sub" style="margin-bottom:16px">Подписка открывает все VIP-фильмы.</p>
+        <button class="btn" data-go-vip>Оформить VIP</button></div></div>`;
+      box.querySelector("[data-go-vip]").onclick = () => go("#/vip");
+      return;
+    }
+    if (f.status !== "ready" && f.kind === "video") {
+      box.innerHTML = `<div class="locked"><p class="sub" style="margin:0">Фильм обрабатывается. Обычно это несколько минут.</p></div>`;
+      S.timer = setInterval(() => { if (S.route === "film") viewFilm(f.id); }, 15000);
+      return;
+    }
+    const r = await api(`/api/films/${f.id}/play`, { method: "POST" });
+    if (!r.ok) {
+      box.innerHTML = `<div class="locked"><p class="sub" style="margin:0">${esc(errText(r.data.error))}</p></div>`;
+      return;
+    }
+    if (r.data.kind === "link") {
+      box.innerHTML = `<div class="player"><iframe src="${esc(r.data.src)}" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe></div>`;
+      return;
+    }
+    const vertical = f.height > f.width && f.width > 0;
+    box.innerHTML = `<div class="player ${vertical ? "vertical" : ""}"><video id="video" controls playsinline></video></div>
+      <div class="qualities" id="qualities"></div>`;
+    const video = $("#video");
+    if (window.Hls && Hls.isSupported()) {
+      const hls = new Hls({ capLevelToPlayerSize: false });
+      S.hls = hls;
+      hls.loadSource(r.data.src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => drawQualities(hls));
+      hls.on(Hls.Events.LEVEL_SWITCHED, () => drawQualities(hls));
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = r.data.src;
+    } else {
+      box.innerHTML = '<div class="locked"><p class="sub" style="margin:0">Браузер не поддерживает воспроизведение</p></div>';
+    }
+  }
+
+  function drawQualities(hls) {
+    const box = $("#qualities");
+    if (!box) return;
+    const levels = hls.levels.map((l, i) => ({ i, h: l.height })).sort((a, b) => b.h - a.h);
+    const cur = hls.currentLevel;
+    const auto = hls.autoLevelEnabled;
+    box.innerHTML = `<button data-q="-1" class="${auto ? "on" : ""}">Авто</button>` +
+      levels.map((l) => `<button data-q="${l.i}" class="${!auto && cur === l.i ? "on" : ""}">${l.h}p</button>`).join("");
+    box.onclick = (e) => {
+      const b = e.target.closest("button[data-q]");
+      if (!b) return;
+      hls.currentLevel = Number(b.dataset.q);
+      drawQualities(hls);
+    };
+  }
+
+  // ---- VIP и профиль ----
+  function payButton(kind, amount, label, cls = "btn") {
+    return `<button class="${cls}" data-pay="${kind}" data-amount="${amount}">${esc(label)}</button>`;
+  }
+
+  async function startPayment(kind, amount) {
+    if (S.me.guest) { toast("Откройте приложение из Telegram"); return; }
+    const r = await api("/api/pay/invoice", { body: { kind, amount } });
+    if (!r.ok) { toast(errText(r.data.error)); return; }
+    const link = r.data.invoice;
+    if (tg && tg.openInvoice) {
+      tg.openInvoice(link, async (status) => {
+        if (status === "paid") {
+          toast("Оплата прошла");
+          await loadMe();
+          if (S.route !== "film") render();
+        }
+      });
+    } else {
+      window.open(link, "_blank");
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-pay]");
+    if (!b) return;
+    startPayment(b.dataset.pay, Number(b.dataset.amount || 0));
+  });
+
+  function viewVip() {
+    const p = S.config.prices;
+    const until = S.me.vipUntil ? fmtDate(S.me.vipUntil) : "";
+    app.innerHTML = `
+      <h1>VIP</h1>
+      <p class="sub">VIP открывает фильмы, помеченные как «Для VIP». Оплата звёздами Telegram.</p>
+      <div class="plans">
+        <div class="plan">
+          <div>Месяц</div>
+          <div class="price">${p.vipMonth} ★</div>
+          <small>Доступ на 30 дней</small>
+          ${payButton("vip_month", p.vipMonth, "Купить на месяц", "btn")}
+        </div>
+        <div class="plan">
+          <div>Год</div>
+          <div class="price">${p.vipYear} ★</div>
+          <small>Доступ на 365 дней. Выгоднее месячной подписки</small>
+          ${payButton("vip_year", p.vipYear, "Купить на год", "btn")}
+        </div>
+      </div>
+      <div class="section glass">
+        <h2>Поддержать проект</h2>
+        <p class="sub">Разовый донат, VIP не продлевается.</p>
+        <div class="row">${S.config.donate.map((n) => payButton("donate", n, `${n} ★`, "btn ghost")).join("")}</div>
+      </div>
+      ${S.me.vipActive && until ? `<p class="sub" style="margin-top:24px">Ваш VIP активен до ${esc(until)}</p>` : ""}`;
+  }
+
+  function viewProfile() {
+    const p = S.config.prices;
+    if (S.me.guest) {
+      app.innerHTML = `<h1>Профиль</h1><p class="sub">Откройте приложение из Telegram, чтобы увидеть профиль.</p>`;
+      return;
+    }
+    const vipLine = S.me.vipActive
+      ? `VIP до ${esc(fmtDate(S.me.vipUntil))}`
+      : "VIP нет";
+    app.innerHTML = `
+      <h1>${esc(S.me.name)}</h1>
+      <p class="sub">Роль: ${esc(S.me.roleTitle)} · ${vipLine}</p>
+      <div class="glass">
+        <h2>Права в боте</h2>
+        <p class="sub">Редактор добавляет фильмы и управляет своими. Админ управляет фильмами, редакторами и VIP.</p>
+        <div class="row">
+          ${S.me.canUpload ? "" : payButton("role_editor", p.editor, `Редактор · ${p.editor} ★`, "btn ghost")}
+          ${S.me.canManage ? "" : payButton("role_admin", p.admin, `Админ · ${p.admin} ★`, "btn ghost")}
+        </div>
+      </div>
+      ${S.me.canUpload ? '<p class="sub" style="margin-top:20px">Панель управления — в нижней навигации.</p>' : ""}`;
+  }
+
+  // ---- админ-панель ----
+  function adminTabs(current) {
+    const tabs = [["films", "Фильмы"], ["upload", "Загрузить"]];
+    if (S.me.canManage) tabs.push(["users", "Пользователи"]);
+    if (S.me.isOwner) tabs.push(["sales", "Продажи"]);
+    return `<div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === current ? "on" : ""}">${t}</button>`).join("")}</div>`;
+  }
+
+  async function viewAdmin(r) {
+    const tab = r.tab || "films";
+    app.innerHTML = `<h1>Админ-панель</h1><p class="sub">Видео загружаются здесь без ограничения размера.</p>${adminTabs(tab)}<div id="admin"></div>`;
+    app.onclick = (e) => {
+      const t = e.target.closest("button[data-tab]");
+      if (t) go(`#/admin${t.dataset.tab === "films" ? "" : "/" + t.dataset.tab}`);
+    };
+    if (tab === "films") await adminFilms(r.edit);
+    if (tab === "upload") adminUpload();
+    if (tab === "users") await adminUsers();
+    if (tab === "sales") await adminSales();
+  }
+
+  async function adminFilms(editId) {
+    const box = $("#admin");
+    box.innerHTML = '<div class="empty">Загрузка...</div>';
+    const films = await call("/api/admin/films").catch(() => []);
+    if (!films.length) { box.innerHTML = '<div class="empty">Фильмов пока нет</div>'; return; }
+    box.innerHTML = films.map((f) => `
+      <div class="list-row">
+        <div class="thumb">${f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="">` : ""}</div>
+        <div class="info">
+          <b>${esc(f.title)}</b>
+          <small>${f.kind === "video" ? "Видео" : "Ссылка"} · ${statusPill(f)} ${f.isVip ? '<span class="pill">VIP</span>' : ""} ${f.isActive ? "" : '<span class="pill bad">Скрыт</span>'}</small>
+          ${f.error ? `<small style="display:block;color:#fca5a5">${esc(f.error)}</small>` : ""}
+        </div>
+        <button class="btn ghost small" data-edit="${f.id}">Изменить</button>
+        ${f.kind === "video" && f.status !== "processing" ? `<button class="btn ghost small" data-redo="${f.id}">Заново</button>` : ""}
+        <button class="btn danger small" data-del="${f.id}">Удалить</button>
+      </div>
+      ${String(f.id) === String(editId) ? editForm(f) : ""}`).join("");
+    box.onclick = async (e) => {
+      const ed = e.target.closest("[data-edit]");
+      const rd = e.target.closest("[data-redo]");
+      const dl = e.target.closest("[data-del]");
+      if (ed) { go(`#/admin/film/${ed.dataset.edit}`); }
+      if (rd) { await call(`/api/admin/films/${rd.dataset.redo}/reprocess`, { body: {} }).catch(() => null); toast("Поставлено в очередь"); adminFilms(); }
+      if (dl && confirm("Удалить фильм вместе с файлами?")) {
+        await call(`/api/admin/films/${dl.dataset.del}/delete`, { body: {} }).catch(() => null);
+        toast("Фильм удалён"); adminFilms();
+      }
+      const save = e.target.closest("[data-save]");
+      if (save) await saveEdit(save.dataset.save);
+    };
+    if (editId) {
+      box.querySelector("#posterInput") && (box.querySelector("#posterInput").onchange = (ev) => uploadPoster(editId, ev.target.files[0]));
+    }
+  }
+
+  function editForm(f) {
+    return `<div class="glass" style="margin:6px 0 22px" id="edit-${f.id}">
+      <h2>Редактирование</h2>
+      <label class="field"><span>Название</span><input type="text" id="e-title" value="${esc(f.title)}" maxlength="120"></label>
+      <label class="field"><span>Описание</span><textarea id="e-desc" maxlength="4000">${esc(f.description)}</textarea></label>
+      <label class="field"><span>Дата выхода</span><input type="date" id="e-date" value="${esc(f.releaseDate)}"></label>
+      <label class="field"><span>Автор</span><input type="text" id="e-creator" value="${esc(f.creator)}" maxlength="120"></label>
+      ${f.kind === "link" ? `<label class="field"><span>Ссылка</span><input type="url" id="e-url" value="${esc(f.url || "")}"></label>` : ""}
+      <label class="field"><span>Обложка</span><input type="file" id="posterInput" accept="image/*"></label>
+      <label class="check"><input type="checkbox" id="e-vip" ${f.isVip ? "checked" : ""}> Фильм только для VIP</label>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="e-active" ${f.isActive ? "checked" : ""}> Показывать в каталоге</label>
+      <div class="row" style="margin-top:18px">
+        <button class="btn" data-save="${f.id}">Сохранить</button>
+        <button class="btn ghost" onclick="location.hash='#/admin'">Закрыть</button>
+      </div>
+    </div>`;
+  }
+
+  async function saveEdit(id) {
+    const body = {
+      title: $("#e-title").value, description: $("#e-desc").value, releaseDate: $("#e-date").value,
+      creator: $("#e-creator").value, isVip: $("#e-vip").checked, isActive: $("#e-active").checked,
+    };
+    if ($("#e-url")) body.url = $("#e-url").value;
+    const r = await call(`/api/admin/films/${id}/update`, { body }).catch(() => null);
+    if (r) { toast("Сохранено"); adminFilms(); }
+  }
+
+  function uploadPoster(id, file) {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("poster", file, file.name);
+    upload(`/api/admin/films/${id}/poster`, fd, null).then(() => { toast("Обложка обновлена"); adminFilms(id); }).catch(() => {});
+  }
+
+  function upload(url, fd, progressEl) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.setRequestHeader("X-Init-Data", initData());
+      if (progressEl) {
+        progressEl.style.display = "block";
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) progressEl.firstElementChild.style.width = Math.round(e.loaded / e.total * 100) + "%"; };
+      }
+      xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+        else { toast(errText(data.error)); reject(new Error(data.error)); }
+      };
+      xhr.onerror = () => { toast("Сеть недоступна"); reject(new Error("network")); };
+      xhr.send(fd);
+    });
+  }
+
+  function adminUpload() {
+    $("#admin").innerHTML = `<div class="glass">
+      <label class="field"><span>Тип</span>
+        <select id="u-kind"><option value="video">Загрузить видео</option><option value="link">Ссылка (TikTok, YouTube)</option></select></label>
+      <div id="u-video"><label class="field"><span>Видеофайл (любого размера)</span><input type="file" id="u-file" accept="video/*"></label></div>
+      <div id="u-link" class="hidden"><label class="field"><span>Ссылка</span><input type="url" id="u-url" placeholder="https://"></label></div>
+      <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
+      <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
+      <label class="field"><span>Дата выхода</span><input type="date" id="u-date"></label>
+      <label class="field"><span>Автор</span><input type="text" id="u-creator" maxlength="120"></label>
+      <label class="field"><span>Обложка</span><input type="file" id="u-poster" accept="image/*"></label>
+      <label class="check"><input type="checkbox" id="u-vip"> Фильм только для VIP</label>
+      <div class="progress" id="u-progress"><div></div></div>
+      <div class="row" style="margin-top:20px"><button class="btn" id="u-send">Добавить фильм</button></div>
+    </div>`;
+    const kind = $("#u-kind");
+    kind.onchange = () => {
+      $("#u-video").classList.toggle("hidden", kind.value !== "video");
+      $("#u-link").classList.toggle("hidden", kind.value !== "link");
+    };
+    $("#u-send").onclick = async () => {
+      const fd = new FormData();
+      fd.append("kind", kind.value);
+      fd.append("title", $("#u-title").value.trim());
+      fd.append("description", $("#u-desc").value);
+      fd.append("releaseDate", $("#u-date").value);
+      fd.append("creator", $("#u-creator").value);
+      fd.append("isVip", $("#u-vip").checked ? "1" : "0");
+      if (kind.value === "video") {
+        const f = $("#u-file").files[0];
+        if (!f) { toast("Выберите видеофайл"); return; }
+        fd.append("video", f, f.name);
+      } else {
+        fd.append("url", $("#u-url").value.trim());
+      }
+      const p = $("#u-poster").files[0];
+      if (p) fd.append("poster", p, p.name);
+      $("#u-send").disabled = true;
+      try {
+        const film = await upload("/api/admin/films", fd, $("#u-progress"));
+        toast("Фильм добавлен");
+        go(`#/admin/film/${film.id}`);
+      } catch (_) {
+        $("#u-send").disabled = false;
+      }
+    };
+  }
+
+  async function adminUsers() {
+    const box = $("#admin");
+    const isOwner = S.me.isOwner;
+    box.innerHTML = `<div class="row" style="margin-bottom:16px">
+        <input type="search" id="uq" placeholder="ID, имя или @username" style="flex:1"></div>
+      <div id="ulist"></div>`;
+    const draw = async () => {
+      const users = await call("/api/admin/users?q=" + encodeURIComponent($("#uq").value.trim())).catch(() => []);
+      $("#ulist").innerHTML = users.length ? users.map((u) => {
+        const roleOpts = isOwner ? ["user", "editor", "admin"] : ["user", "editor"];
+        return `<div class="list-row">
+          <div class="info"><b>${esc(u.name)}</b><small>${u.id} · ${esc(u.role === "owner" ? "Владелец" : u.role === "admin" ? "Админ" : u.role === "editor" ? "Редактор" : "Пользователь")} · ${u.vipActive ? "VIP до " + esc(fmtDate(u.vipUntil)) : "без VIP"}</small></div>
+          ${u.role === "owner" ? "" : `<select data-role="${u.id}" style="width:auto;padding:8px 12px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${{ user: "Пользователь", editor: "Редактор", admin: "Админ" }[r]}</option>`).join("")}</select>`}
+          ${u.role === "owner" ? "" : `<button class="btn ghost small" data-vip="${u.id}" data-days="30">VIP 30</button>
+          <button class="btn ghost small" data-vip="${u.id}" data-days="365">VIP 365</button>
+          ${u.vipActive ? `<button class="btn danger small" data-vip="${u.id}" data-days="-30">Отозвать 30</button>` : ""}`}
+        </div>`;
+      }).join("") : '<div class="empty">Никого не найдено</div>';
+    };
+    $("#uq").addEventListener("input", debounce(draw, 300));
+    box.onchange = async (e) => {
+      const sel = e.target.closest("select[data-role]");
+      if (!sel) return;
+      await call("/api/admin/role", { body: { id: Number(sel.dataset.role), role: sel.value } }).catch(() => null);
+      toast("Роль обновлена"); draw();
+    };
+    box.onclick = async (e) => {
+      const b = e.target.closest("button[data-vip]");
+      if (!b) return;
+      await call("/api/admin/vip", { body: { id: Number(b.dataset.vip), days: Number(b.dataset.days) } }).catch(() => null);
+      toast("Готово"); draw();
+    };
+    draw();
+  }
+
+  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  async function adminSales() {
+    const box = $("#admin");
+    const [stats, sales] = await Promise.all([call("/api/admin/stats").catch(() => ({})), call("/api/admin/sales").catch(() => ({ sales: [] }))]);
+    const bal = stats.botBalance == null ? "нет данных" : stats.botBalance + " ★";
+    box.innerHTML = `<div class="stat-grid">
+        <div class="stat"><b>${bal}</b><small>Баланс бота</small></div>
+        <div class="stat"><b>${stats.revenue ?? 0} ★</b><small>Всего получено</small></div>
+        <div class="stat"><b>${stats.vip ?? 0}</b><small>Активных VIP</small></div>
+        <div class="stat"><b>${stats.users ?? 0}</b><small>Пользователей</small></div>
+        <div class="stat"><b>${stats.films ?? 0}</b><small>Фильмов</small></div>
+        <div class="stat"><b>${stats.views ?? 0}</b><small>Просмотров</small></div>
+      </div>
+      <h2 class="section">Последние оплаты</h2>
+      ${sales.sales.length ? sales.sales.map((s) => `<div class="list-row">
+        <div class="info"><b>${esc(s.label)} · ${s.amount} ★</b><small>${esc(s.user)} · ${esc(fmtDate(s.date))}${s.refunded ? " · возвращено" : ""}</small></div>
+        ${s.refundable ? `<button class="btn danger small" data-refund="${s.id}">Вернуть</button>` : ""}
+      </div>`).join("") : '<div class="empty">Продаж пока нет</div>'}`;
+    box.onclick = async (e) => {
+      const b = e.target.closest("button[data-refund]");
+      if (!b || !confirm("Вернуть звёзды покупателю?")) return;
+      await call(`/api/admin/sales/${b.dataset.refund}/refund`, { body: {} }).catch(() => null);
+      toast("Возврат выполнен"); adminSales();
+    };
+  }
+
+  // ---- старт ----
+  (async function boot() {
+    await Promise.all([loadMe(), loadConfig()]);
+    if (!location.hash) location.hash = "#/catalog";
+    render();
   })();
 })();
 </script>
