@@ -24,6 +24,7 @@ import json
 import logging
 import mimetypes
 import os
+import pysubs2
 import re
 import shutil
 import signal
@@ -60,10 +61,12 @@ STATIC_DIR = BASE_DIR / "static"
 DEFAULT_OWNER_ID = 7745681987
 DEFAULT_BACKGROUND = "https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg"
 DONATE_OPTIONS = (50, 100, 250, 500)
-LADDER = (360, 720, 1080)                       # высоты качества
-BITRATE_KBPS = {360: 800, 720: 2500, 1080: 5000}
-BOT_UPLOAD_LIMIT = 20 * 1024 * 1024             # лимит Bot API на скачивание файла
-UPLOAD_LIMIT = 8 * 1024 ** 3                    # загрузка через Mini App ограничена только диском
+LADDER = (144, 240, 360, 480, 720, 1080)        # качества HLS: от 144p до 1080p
+BITRATE_KBPS = {144: 120, 240: 300, 360: 800, 480: 1400, 720: 2500, 1080: 5000}
+AUDIO_KBPS = {144: 64, 240: 64, 360: 96}
+BOT_UPLOAD_LIMIT = 20 * 1024 * 1024             # лимит Bot API на скачивание файла (cloud API)
+UPLOAD_LIMIT = 2 * 1024 ** 3                    # максимум файла при загрузке через Mini App: 2 ГБ
+SUB_EXT = {".srt", ".vtt", ".ass", ".ssa", ".sub"}
 VIP_MONTH_DAYS, VIP_YEAR_DAYS = 30, 365
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
 TIKTOK_RE = re.compile(r"tiktok\.com/(?:@[^/]+/video/|v/|embed/(?:v2/)?)(\d+)")
@@ -548,6 +551,65 @@ async def _run(args: list[str]) -> bytes:
     return err
 
 
+async def subtitle_streams(src: Path) -> list[str]:
+    """Коды языков встроенных текстовых субтитров по порядку (0:s:0, 0:s:1...)."""
+    err = (await _run(["-hide_banner", "-i", str(src)])).decode(errors="replace")
+    langs = []
+    for m in re.finditer(r"Stream #0:\d+(?:\((\w+)\))?.*?: Subtitle: (\w+)", err):
+        langs.append((m.group(1) or "und").lower() if m.group(2) not in ("hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle") else "")
+    return langs
+
+
+ISO3 = {"rus": "ru", "eng": "en", "ukr": "uk", "deu": "de", "ger": "de", "fra": "fr", "fre": "fr",
+        "spa": "es", "ita": "it", "tur": "tr", "jpn": "ja", "kor": "ko", "zho": "zh", "chi": "zh"}
+
+
+def sub_name(lang: str) -> str:
+    code = re.sub(r"[^a-z0-9-]", "", lang.lower())[:12]
+    return ISO3.get(code, code) or "und"
+
+
+async def extract_subtitles(src: Path, out_dir: Path) -> None:
+    """Извлекает встроенные текстовые субтитры в WebVTT. Растровые (PGS/DVD) пропускаются."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for k, lang in enumerate(await subtitle_streams(src)):
+        if not lang:
+            continue
+        name = sub_name(lang)
+        target = out_dir / f"{name}.vtt"
+        n = 2
+        while target.exists():  # несколько дорожек одного языка
+            target = out_dir / f"{name}{n}.vtt"
+            n += 1
+        await _run(["-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+                    "-map", f"0:s:{k}", "-c:s", "webvtt", str(target)])
+        if not target.exists() or target.stat().st_size == 0:
+            target.unlink(missing_ok=True)
+
+
+def convert_subtitle(src: Path, dest: Path) -> None:
+    """Любой текстовый субтитр (SRT, ASS, SSA, VTT) -> WebVTT. Кодировка UTF-8 или CP1251."""
+    last: Exception | None = None
+    for enc in ("utf-8", "cp1251"):
+        try:
+            subs = pysubs2.load(str(src), encoding=enc)
+            break
+        except (UnicodeDecodeError, pysubs2.exceptions.Pysubs2Error) as err:
+            last = err
+    else:
+        raise ValueError(f"Не удалось прочитать субтитры: {last}")
+    if not len(subs):
+        raise ValueError("В файле нет субтитров")
+    subs.save(str(dest), encoding="utf-8", format_="vtt")
+
+
+def list_subtitles(folder: Path) -> list[str]:
+    sub_dir = folder / "subs"
+    if not sub_dir.is_dir():
+        return []
+    return sorted(p.stem for p in sub_dir.glob("*.vtt"))
+
+
 async def probe(src: Path) -> tuple[int, int, int]:
     """Возвращает (ширина, высота, длительность в секундах) через вывод ffmpeg."""
     err = (await _run(["-hide_banner", "-i", str(src)])).decode(errors="replace")
@@ -611,7 +673,7 @@ class Transcoder:
             except TelegramBadRequest as err:
                 if "too big" in str(err).lower():
                     raise RuntimeError(
-                        "Telegram не отдаёт боту файлы больше 20 МБ. Загрузите видео через Админ-панель в Mini App."
+                        "Telegram не отдаёт боту файлы больше 20 МБ. Загрузите видео до 2 ГБ через Админ-панель в Mini App."
                     ) from err
                 raise
             await self.bot.download_file(tg_file.file_path, destination=src)
@@ -621,12 +683,14 @@ class Transcoder:
             raise RuntimeError("Файл не распознан как видео")
 
         ladder = [h for h in LADDER if h <= height] or [LADDER[0]]
+        await extract_subtitles(src, folder / "subs")
         variants: list[tuple[int, int, int]] = []
         for h in ladder:
             w = max(2, round(width * h / height / 2) * 2)
             out = folder / f"{h}p"
             out.mkdir(exist_ok=True)
             kbps = BITRATE_KBPS[h]
+            akbps = AUDIO_KBPS.get(h, 128)
             err = await _run([
                 "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
                 "-map", "0:v:0", "-map", "0:a:0?",
@@ -634,7 +698,7 @@ class Transcoder:
                 "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high",
                 "-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.1)}k", "-bufsize", f"{kbps * 2}k",
                 "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
-                "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+                "-c:a", "aac", "-b:a", f"{akbps}k", "-ac", "2",
                 "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod",
                 "-hls_segment_filename", str(out / "seg_%04d.ts"),
                 str(out / "index.m3u8"),
@@ -788,14 +852,14 @@ def build_router(cfg: Config, db: Database, transcoder: Transcoder) -> Router:
 
     @router.message(F.video)
     async def on_video_from_staff(message: Message, role: str) -> None:
-        """Видео, которое админ отправил боту, становится фильмом (до 20 МБ — лимит Bot API)."""
+        """Видео, которое админ отправил боту, становится фильмом (до 20 МБ — лимит Bot API, больше — через Mini App до 2 ГБ)."""
         if not at_least(role, EDITOR):
             return
         video = message.video
         url = f"{cfg.webapp_url}#admin/upload" if cfg.webapp_url else None
         if (video.file_size or 0) > BOT_UPLOAD_LIMIT:
             text = ("Файл больше 20 МБ, бот не может его скачать. "
-                    "Загрузите видео в Админ-панели Mini App, там ограничения нет.")
+                    "Загрузите видео до 2 ГБ в Админ-панели Mini App.")
             await message.answer(text, reply_markup=webapp_kb(url) if url else None)
             return
         title = (message.caption or video.file_name or "Без названия").rsplit(".", 1)[0][:100]
@@ -949,7 +1013,9 @@ def _err(code: str, status: int) -> web.Response:
 
 
 async def _read_multipart(request: web.Request, tmp_dir: Path) -> tuple[dict[str, str], dict[str, tuple[Path, str]]]:
-    """Потоковая запись файлов на диск: размер не ограничен памятью."""
+    """Потоковая запись файлов на диск (память не растёт), каждый файл не больше UPLOAD_LIMIT."""
+    if request.content_length and request.content_length > UPLOAD_LIMIT + 16 * 1024 * 1024:
+        raise web.HTTPRequestEntityTooLarge(max_size=UPLOAD_LIMIT, actual_size=request.content_length)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     fields: dict[str, str] = {}
     files: dict[str, tuple[Path, str]] = {}
@@ -957,13 +1023,45 @@ async def _read_multipart(request: web.Request, tmp_dir: Path) -> tuple[dict[str
     async for part in reader:
         if part.filename:
             target = tmp_dir / f"{uuid.uuid4().hex}"
+            size = 0
             with open(target, "wb") as fh:
                 while chunk := await part.read_chunk(1 << 20):
+                    size += len(chunk)
+                    if size > UPLOAD_LIMIT:
+                        fh.close()
+                        target.unlink(missing_ok=True)
+                        for path, _ in files.values():
+                            path.unlink(missing_ok=True)
+                        raise web.HTTPRequestEntityTooLarge(max_size=UPLOAD_LIMIT, actual_size=size)
                     fh.write(chunk)
             files[part.name] = (target, part.filename)
         else:
             fields[part.name] = (await part.text()).strip()
     return fields, files
+
+
+SUB_LABELS = {
+    "ru": "Русские", "en": "English", "uk": "Українська", "de": "Deutsch", "fr": "Français",
+    "es": "Español", "it": "Italiano", "tr": "Türkçe", "ja": "日本語", "ko": "한국어", "zh": "中文", "und": "Субтитры",
+}
+
+
+async def _subtitle_upload(api: "Api", request: web.Request, film: dict, folder: Path) -> web.Response:
+    fields, files = await _read_multipart(request, folder.parent / "tmp")
+    try:
+        if "file" not in files:
+            return _err("subtitle_required", 400)
+        lang = sub_name(fields.get("lang", "ru"))
+        src, _ = files["file"]
+        (folder / "subs").mkdir(parents=True, exist_ok=True)
+        try:
+            convert_subtitle(src, folder / "subs" / f"{lang}.vtt")
+        except ValueError:
+            return _err("bad_subtitle", 400)
+        return _json({"ok": True, "subtitles": list_subtitles(folder)})
+    finally:
+        for path, _ in files.values():
+            path.unlink(missing_ok=True)
 
 
 IMAGE_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
@@ -976,7 +1074,7 @@ def _poster_ext(filename: str) -> str:
 
 def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
               transcoder: Transcoder, bot_username: str | None) -> web.Application:
-    app = web.Application(client_max_size=UPLOAD_LIMIT)
+    app = web.Application(client_max_size=UPLOAD_LIMIT + 16 * 1024 * 1024)
     api = Api(cfg, db, bot, transcoder)
     media_root = cfg.media_dir
 
@@ -1071,7 +1169,11 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         if film["kind"] == "link":
             return _json({"kind": "link", "src": embed_url(film["url"]), "url": film["url"]})
         token = make_media_token(api.secret, film["id"])
-        return _json({"kind": "hls", "src": f"/api/media/{film['id']}/{token}/master.m3u8"})
+        subs = [{"lang": n, "label": SUB_LABELS.get(n.rstrip("0123456789"), n.upper()),
+                 "src": f"/api/media/{film['id']}/{token}/subs/{n}.vtt"}
+                for n in list_subtitles(media_root / str(film["id"]))]
+        return _json({"kind": "hls", "src": f"/api/media/{film['id']}/{token}/master.m3u8", "subtitles": subs,
+                      "width": film["width"], "height": film["height"]})
 
     async def media(request: web.Request) -> web.StreamResponse:
         try:
@@ -1084,7 +1186,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         target = (base / request.match_info["path"]).resolve()
         if base not in target.parents or not target.is_file():
             return web.Response(status=404)
-        ctype = {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t"}.get(target.suffix, "application/octet-stream")
+        ctype = {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".vtt": "text/vtt; charset=utf-8"}.get(
+            target.suffix, "application/octet-stream")
         return web.FileResponse(target, headers={"Content-Type": ctype, "Cache-Control": "private, max-age=3600"})
 
     async def add_review(request: web.Request) -> web.Response:
@@ -1189,7 +1292,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             return bad
         owner = None if at_least(user["role"], ADMIN) else user["id"]
         rows = db.list_films(public=False, owner_id=owner)
-        return _json([{**api.film_json(user, f), "error": f["error"], "isActive": bool(f["is_active"])}
+        return _json([{**api.film_json(user, f), "error": f["error"], "isActive": bool(f["is_active"]),
+                       "subtitles": list_subtitles(media_root / str(f["id"])) if f["kind"] == "video" else []}
                       for f in rows])
 
     async def admin_create(request: web.Request) -> web.Response:
@@ -1291,6 +1395,26 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             for path, _ in files.values():
                 if path.exists():
                     path.unlink()
+
+    async def admin_subtitle_add(request: web.Request) -> web.Response:
+        user, bad = staff_user(request, EDITOR)
+        if bad:
+            return bad
+        film = _managed(user, int(request.match_info["id"]))
+        if not film or film["kind"] != "video":
+            return _err("not_found", 404)
+        return await _subtitle_upload(api, request, film, media_root / str(film["id"]))
+
+    async def admin_subtitle_delete(request: web.Request) -> web.Response:
+        user, bad = staff_user(request, EDITOR)
+        if bad:
+            return bad
+        film = _managed(user, int(request.match_info["id"]))
+        if not film:
+            return _err("not_found", 404)
+        name = sub_name(request.match_info["lang"])
+        (media_root / str(film["id"]) / "subs" / f"{name}.vtt").unlink(missing_ok=True)
+        return _json({"ok": True, "subtitles": list_subtitles(media_root / str(film["id"]))})
 
     async def admin_delete(request: web.Request) -> web.Response:
         user, bad = staff_user(request, EDITOR)
@@ -1438,6 +1562,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("POST", "/api/admin/films/{id}/poster", admin_poster),
         ("POST", "/api/admin/films/{id}/delete", admin_delete),
         ("POST", "/api/admin/films/{id}/reprocess", admin_reprocess),
+        ("POST", "/api/admin/films/{id}/subtitles", admin_subtitle_add),
+        ("POST", "/api/admin/films/{id}/subtitles/{lang}/delete", admin_subtitle_delete),
         ("GET", "/api/admin/users", admin_users),
         ("POST", "/api/admin/role", admin_role),
         ("POST", "/api/admin/vip", admin_vip),

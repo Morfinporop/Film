@@ -11,7 +11,8 @@
     --text: #f4f4f5;
     --muted: #a1a1aa;
     --line: rgba(255,255,255,.1);
-    --panel: rgba(20,20,22,.62);
+    /* единый фон всех карточек, панелей и кнопок: как у поля ввода */
+    --field: rgba(0,0,0,.35);
     --accent: #ffffff;
     --danger: #ef4444;
     --gold: #e7c15a;
@@ -33,16 +34,14 @@
   button { cursor: pointer; }
   a { color: inherit; }
   img { display: block; }
+  .hidden { display: none !important; }
 
-  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 20px 140px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 140px; }
   h1 { font-size: 26px; font-weight: 650; margin: 0 0 6px; letter-spacing: -.01em; }
   h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
   .section { margin-top: 36px; }
-  .glass {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 22px;
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); padding: 20px;
-  }
+  .glass { background: var(--field); border: 1px solid var(--line); border-radius: 22px; padding: 20px; }
 
   /* ---- нижняя навигация ---- */
   .nav {
@@ -51,8 +50,8 @@
     width: min(calc(100% - 48px), 380px);
     display: flex; justify-content: space-between; align-items: center; gap: 6px;
     padding: 8px; border-radius: 999px; z-index: 10;
-    background: rgba(28,28,30,.55);
-    border: 1px solid rgba(255,255,255,.08);
+    background: var(--field);
+    border: 1px solid var(--line);
     backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
     box-shadow: 0 10px 30px rgba(0,0,0,.35);
   }
@@ -61,9 +60,8 @@
     background: transparent; color: var(--muted);
     display: grid; place-items: center; transition: background .2s, color .2s;
   }
-  .nav button.on { background: rgba(255,255,255,.16); color: #fff; }
+  .nav button.on { background: #fff; color: #000; }
   .nav svg { width: 22px; height: 22px; }
-  .nav .hidden { display: none; }
 
   /* ---- кнопки ---- */
   .btn {
@@ -71,37 +69,37 @@
     background: #fff; color: #000; transition: opacity .2s;
   }
   .btn:disabled { opacity: .45; cursor: default; }
-  .btn.ghost { background: rgba(255,255,255,.1); color: var(--text); }
+  .btn.ghost { background: var(--field); color: var(--text); border: 1px solid var(--line); }
   .btn.danger { background: rgba(239,68,68,.16); color: #fca5a5; }
   .btn.small { padding: 8px 14px; font-size: 13px; }
-  .btn.round { width: 40px; height: 40px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
+  .btn.round { width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .spacer { flex: 1; }
 
-  /* ---- поля ---- */
-  input[type=text], input[type=search], input[type=number], input[type=date], input[type=url], select, textarea {
+  /* ---- поля ввода: тот же фон, что и у панелей ---- */
+  input[type=text], input[type=search], input[type=number], input[type=date], input[type=url], input[type=file], select, textarea {
     width: 100%; padding: 13px 16px; border-radius: 16px; border: 1px solid var(--line);
-    background: rgba(0,0,0,.35); outline: none; font-size: 15px;
+    background: var(--field); outline: none; font-size: 15px;
   }
+  input[type=file] { padding: 10px 12px; font-size: 14px; color: var(--muted); }
   input:focus, select:focus, textarea:focus { border-color: rgba(255,255,255,.35); }
   textarea { resize: vertical; min-height: 96px; }
   label.field { display: block; margin-bottom: 14px; }
   label.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .check { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.5; margin: -6px 0 14px; }
 
   /* ---- сетка фильмов ---- */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
   .card { cursor: pointer; text-decoration: none; }
   .cover {
     position: relative; aspect-ratio: 2 / 3; border-radius: 20px; overflow: hidden;
-    background: linear-gradient(160deg, #3f3f46, #18181b);
-    box-shadow: 0 12px 30px rgba(0,0,0,.4);
+    background: var(--field); border: 1px solid var(--line);
   }
   .cover img { width: 100%; height: 100%; object-fit: cover; }
   .vip-badge {
     position: absolute; left: 12px; top: 12px; padding: 6px 12px; border-radius: 999px;
-    background: rgba(0,0,0,.55); color: var(--gold); font-size: 12px; font-weight: 650;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    background: var(--field); border: 1px solid var(--line); color: var(--gold); font-size: 12px; font-weight: 650;
   }
   .cover .vip-text {
     position: absolute; inset: auto 0 22% 0; text-align: center; font-size: 22px; font-weight: 800;
@@ -109,79 +107,192 @@
   }
   .card .title { margin: 12px 4px 2px; font-weight: 600; font-size: 15px; line-height: 1.3; }
   .card .meta { margin: 0 4px; color: var(--muted); font-size: 13px; }
-  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.1); font-size: 12px; color: var(--muted); }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
   .pill.ok { color: #86efac; }
   .pill.wait { color: #fde68a; }
   .pill.bad { color: #fca5a5; }
 
-  /* ---- экран фильма ---- */
+  /* ---- экран фильма: постер на фоне без чёрной подложки ---- */
   .hero { position: relative; margin: -28px -20px 0; padding: 28px 20px 32px; overflow: hidden; border-radius: 0 0 28px 28px; }
   .hero::before {
-    content: ""; position: absolute; inset: -40px; z-index: -2;
-    background: var(--poster) center / cover no-repeat; filter: blur(34px) brightness(.45); transform: scale(1.1);
+    content: ""; position: absolute; inset: -40px; z-index: -1;
+    background: var(--poster) center / cover no-repeat; filter: blur(34px) brightness(.55); transform: scale(1.1);
   }
-  .hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(0,0,0,.2), rgba(10,10,12,.92)); }
   .hero-inner { display: grid; grid-template-columns: 150px 1fr; gap: 20px; align-items: end; }
   .hero .cover { border-radius: 18px; }
   .hero h1 { font-size: 24px; }
   .facts { color: var(--muted); font-size: 14px; line-height: 1.8; margin-top: 8px; }
   .facts b { color: var(--text); font-weight: 500; }
   .desc { line-height: 1.65; color: #d4d4d8; white-space: pre-wrap; font-size: 15px; margin: 0; }
-  .player { width: 100%; border-radius: 20px; background: #000; overflow: hidden; aspect-ratio: 16 / 9; }
-  .player video, .player iframe { width: 100%; height: 100%; border: 0; display: block; }
-  .player.vertical { aspect-ratio: 9 / 16; max-height: 70vh; margin: 0 auto; width: auto; }
-  .qualities { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-  .qualities button {
-    border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 13px;
+
+  /* ---- кастомный видеоплеер ---- */
+  .vp {
+    position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 20px; overflow: hidden;
+    background: transparent; user-select: none; -webkit-user-select: none; outline: none;
+    touch-action: manipulation;
   }
-  .qualities button.on { background: #fff; color: #000; font-weight: 600; }
+  .vp.vertical { aspect-ratio: 9 / 16; max-height: 72vh; width: auto; max-width: 100%; margin: 0 auto; }
+  .vp.fs { border-radius: 0; width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; margin: 0; }
+  .vp video { width: 100%; height: 100%; display: block; object-fit: contain; background: transparent; }
+  .vp.fs video { object-fit: contain; }
+  .vp:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
+  .vp-spin {
+    position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+    border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
+    animation: vpspin .8s linear infinite; display: none; pointer-events: none;
+  }
+  .vp.loading .vp-spin { display: block; }
+  @keyframes vpspin { to { transform: rotate(360deg); } }
+  .vp-flash {
+    position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px;
+    border-radius: 50%; background: var(--field); border: 1px solid var(--line);
+    display: grid; place-items: center; pointer-events: none; opacity: 0; transform: scale(.7);
+    transition: opacity .25s, transform .25s;
+  }
+  .vp-flash svg { width: 30px; height: 30px; }
+  .vp-flash.show { opacity: 1; transform: scale(1); }
+  .vp-skip {
+    position: absolute; top: 50%; width: 110px; margin-top: -30px; text-align: center; pointer-events: none;
+    opacity: 0; transition: opacity .3s; font-size: 14px; font-weight: 600; text-shadow: 0 1px 6px #000;
+  }
+  .vp-skip.l { left: 8%; } .vp-skip.r { right: 8%; }
+  .vp-skip.show { opacity: 1; }
+  .vp-err {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+    background: var(--field); font-size: 15px; color: var(--muted);
+  }
+  /* субтитры: слева внизу, текст без подложки */
+  .vp-subs {
+    position: absolute; left: 4%; right: 30%; bottom: 66px; text-align: left; pointer-events: none;
+    font-size: clamp(15px, 2.4vw, 24px); line-height: 1.3; font-weight: 600; color: #fff; white-space: pre-line;
+    text-shadow: 0 0 2px #000, 0 1px 3px #000, 0 0 8px rgba(0,0,0,.9); transition: bottom .25s;
+    display: none;
+  }
+  .vp-subs.on { display: block; }
+  .vp.idle .vp-subs { bottom: 18px; }
+  .vp.fs .vp-subs { font-size: clamp(18px, 2.4vw, 34px); }
+  .vp-bar {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 12px 10px;
+    background: linear-gradient(180deg, transparent, var(--field));
+    transition: opacity .25s;
+  }
+  .vp.idle { cursor: none; }
+  .vp.idle .vp-bar { opacity: 0; pointer-events: none; }
+  .vp-prog {
+    position: relative; height: 18px; margin: 0 2px 4px; cursor: pointer; display: flex; align-items: center; touch-action: none;
+  }
+  .vp-prog::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 4px; border-radius: 4px;
+    background: var(--field); border: 1px solid var(--line); transition: height .15s, top .15s;
+  }
+  .vp-prog:hover::before, .vp.scrubbing .vp-prog::before { top: 6px; height: 6px; }
+  .vp-buf, .vp-played { position: absolute; top: 7px; height: 4px; border-radius: 4px; left: 0; pointer-events: none; }
+  .vp-prog:hover .vp-buf, .vp.scrubbing .vp-buf, .vp-prog:hover .vp-played, .vp.scrubbing .vp-played { top: 6px; height: 6px; }
+  .vp-buf { background: rgba(255,255,255,.42); width: 0; }
+  .vp-played { background: #fff; width: 0; }
+  .vp-knob {
+    position: absolute; top: 2px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+    background: #fff; left: 0; opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s; pointer-events: none;
+    box-shadow: 0 0 0 3px rgba(0,0,0,.25);
+  }
+  .vp-prog:hover .vp-knob, .vp.scrubbing .vp-knob { opacity: 1; transform: scale(1); }
+  .vp-tip {
+    position: absolute; bottom: 22px; left: 0; transform: translateX(-50%); padding: 4px 9px; border-radius: 10px;
+    font-size: 12px; font-weight: 600; background: var(--field); border: 1px solid var(--line); opacity: 0;
+    pointer-events: none; white-space: nowrap; transition: opacity .15s;
+  }
+  .vp-prog:hover .vp-tip, .vp.scrubbing .vp-tip { opacity: 1; }
+  .vp-row { display: flex; align-items: center; gap: 2px; }
+  .vp-btn {
+    width: 40px; height: 40px; border: 0; border-radius: 50%; background: transparent; color: #fff;
+    display: grid; place-items: center; flex: none; padding: 0;
+  }
+  .vp-btn:hover { background: var(--field); }
+  .vp-btn:focus-visible { outline: 2px solid rgba(255,255,255,.5); outline-offset: -2px; }
+  .vp-btn svg { width: 22px; height: 22px; fill: currentColor; }
+  .vp-btn.stroke svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .vp-btn.textual { width: auto; border-radius: 10px; padding: 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+  .vp-btn.textual.on { background: #fff; color: #000; }
+  .vp-vol { display: flex; align-items: center; }
+  .vp-vol input[type=range] {
+    width: 0; opacity: 0; transition: width .2s, opacity .2s, margin .2s; margin-left: 0;
+    -webkit-appearance: none; appearance: none; height: 4px; background: var(--field); border: 1px solid var(--line); border-radius: 4px; outline: none;
+  }
+  .vp-vol:hover input[type=range], .vp-vol:focus-within input[type=range] { width: 84px; opacity: 1; margin-left: 4px; }
+  .vp-vol input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+  .vp-vol input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; }
+  .vp-time { color: #fff; font-size: 13px; font-variant-numeric: tabular-nums; margin-left: 8px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+  .vp-grow { flex: 1; }
+  .vp-menu {
+    position: absolute; right: 12px; bottom: 64px; min-width: 250px; max-width: calc(100% - 24px); max-height: 70%; overflow: auto;
+    background: var(--field); border: 1px solid var(--line); border-radius: 18px; padding: 6px;
+    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+    color: var(--text); font-size: 14px; z-index: 3;
+  }
+  .vp-mrow {
+    width: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--text);
+    padding: 11px 12px; border-radius: 12px; text-align: left;
+  }
+  .vp-mrow:hover { background: var(--field); }
+  .vp-mrow .val { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .vp-mrow svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .vp-mrow.back { border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0; margin-bottom: 4px; font-weight: 600; }
+  .vp-mrow.check .tick { margin-left: auto; visibility: hidden; }
+  .vp-mrow.check.on .tick { visibility: visible; }
+  .vp-mrow.check.on { font-weight: 600; }
+
   .locked {
     aspect-ratio: 16 / 9; border-radius: 20px; display: grid; place-items: center; text-align: center; padding: 24px;
-    background: rgba(0,0,0,.5); border: 1px solid var(--line);
+    background: var(--field); border: 1px solid var(--line);
   }
   .stars { display: inline-flex; gap: 4px; }
-  .stars button { border: 0; background: none; font-size: 26px; line-height: 1; color: #3f3f46; padding: 0 2px; }
+  .stars button { border: 0; background: none; font-size: 26px; line-height: 1; color: #52525b; padding: 0 2px; }
   .stars button.on { color: var(--gold); }
   .item { padding: 14px 0; border-bottom: 1px solid var(--line); }
   .item:last-child { border-bottom: 0; }
-  .item .head { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+  .item .head { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
   .item .head b { color: var(--text); font-weight: 600; }
   .item p { margin: 6px 0 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 
-  /* ---- тосты, модалка ---- */
+  /* ---- тосты, админка, планы ---- */
   .toast {
     position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 50;
-    background: rgba(24,24,27,.9); border: 1px solid var(--line); padding: 12px 18px; border-radius: 999px;
+    background: var(--field); border: 1px solid var(--line); padding: 12px 18px; border-radius: 999px;
     font-size: 14px; max-width: calc(100% - 40px); text-align: center; display: none;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   .toast.show { display: block; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; font-size: 15px; }
   .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
-  .tabs button { border: 0; border-radius: 999px; padding: 9px 16px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 14px; }
-  .tabs button.on { background: #fff; color: #000; font-weight: 600; }
-  .list-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; background: var(--field); color: var(--muted); font-size: 14px; }
+  .tabs button.on { background: #fff; color: #000; font-weight: 600; border-color: #fff; }
+  .list-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .list-row:last-child { border-bottom: 0; }
-  .list-row .info { flex: 1; min-width: 0; }
+  .list-row .info { flex: 1; min-width: 160px; }
   .list-row .info b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .list-row .info small { color: var(--muted); font-size: 13px; }
-  .thumb { width: 44px; height: 64px; border-radius: 10px; overflow: hidden; background: #27272a; flex: none; }
+  .thumb { width: 44px; height: 64px; border-radius: 10px; overflow: hidden; background: var(--field); border: 1px solid var(--line); flex: none; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .progress { height: 6px; background: rgba(255,255,255,.1); border-radius: 999px; overflow: hidden; margin-top: 10px; display: none; }
+  .progress { height: 6px; background: var(--field); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 10px; display: none; }
   .progress div { height: 100%; width: 0; background: #fff; transition: width .2s; }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
-  .stat { padding: 16px; border-radius: 18px; background: rgba(0,0,0,.3); border: 1px solid var(--line); }
+  .stat { padding: 16px; border-radius: 18px; background: var(--field); border: 1px solid var(--line); }
   .stat b { display: block; font-size: 22px; font-weight: 650; }
   .stat small { color: var(--muted); font-size: 13px; }
   .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .plan { padding: 20px; border-radius: 22px; background: rgba(0,0,0,.35); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+  .plan { padding: 20px; border-radius: 22px; background: var(--field); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
   .plan .price { font-size: 26px; font-weight: 700; }
   .plan small { color: var(--muted); font-size: 13px; line-height: 1.5; }
-  .hidden { display: none !important; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 13px; }
+  .chip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(239,68,68,.2); color: #fca5a5; font-size: 13px; line-height: 1; padding: 0; }
   @media (max-width: 480px) {
     .plans { grid-template-columns: 1fr; }
     .hero-inner { grid-template-columns: 116px 1fr; gap: 14px; }
     .hero h1 { font-size: 20px; }
+    .vp-vol input[type=range] { display: none; }
+    .vp-time { font-size: 12px; }
+    .vp-btn { width: 36px; height: 36px; }
   }
 </style>
 </head>
@@ -214,11 +325,9 @@
   if (tg) { try { tg.ready(); tg.expand(); } catch (_) {} }
   const app = document.getElementById("app");
   const nav = document.getElementById("nav");
+  const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
 
-  const S = {
-    me: { guest: true }, config: null, films: [], route: "catalog", hls: null, timer: null, adminTab: "films",
-    search: "", editId: null,
-  };
+  const S = { me: { guest: true }, config: null, films: [], route: "catalog", player: null, timer: null, search: "", filmId: null };
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -234,7 +343,8 @@
     video_required: "Выберите видеофайл", poster_required: "Выберите обложку", bad_kind: "Неверный тип",
     bad_role: "Неверная роль", bad_id: "Неверный ID", bad_days: "Неверный срок", owner: "Это владелец",
     not_refundable: "Возврат невозможен", telegram_refused: "Telegram отклонил возврат", already: "Эта роль уже есть",
-    bad_amount: "Неверная сумма", processing: "Идёт обработка",
+    bad_amount: "Неверная сумма", processing: "Идёт обработка", subtitle_required: "Выберите файл субтитров",
+    bad_subtitle: "Не удалось прочитать субтитры. Нужен SRT, VTT, ASS или SSA", too_large: "Файл больше 2 ГБ",
   };
   const errText = (code) => ERRORS[code] || "Ошибка, попробуйте ещё раз";
 
@@ -247,6 +357,7 @@
     const res = await fetch(path, { method: opts.method || (body ? "POST" : "GET"), headers, body });
     let data = null;
     try { data = await res.json(); } catch (_) {}
+    if (res.status === 413) data = { error: "too_large" };
     return { ok: res.ok, status: res.status, data: data || {} };
   }
 
@@ -266,16 +377,25 @@
     const d = new Date(s + "T00:00:00");
     return isNaN(d) ? s : d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
   }
-  function duration(sec) {
-    if (!sec) return "";
-    const m = Math.floor(sec / 60), s = sec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const ss = String(s).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
   }
   function statusPill(f) {
     if (f.status === "processing") return '<span class="pill wait">Обработка</span>';
     if (f.status === "failed") return '<span class="pill bad">Ошибка</span>';
     return '<span class="pill ok">Готов</span>';
   }
+
+  // ---- настройки плеера (сохраняются на устройстве) ----
+  const PREFS_KEY = "film.player.prefs";
+  const prefs = (() => {
+    const d = { volume: 1, muted: false, speed: 1, quality: "auto", sub: "off" };
+    try { return Object.assign(d, JSON.parse(localStorage.getItem(PREFS_KEY) || "{}")); } catch (_) { return d; }
+  })();
+  const savePrefs = () => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) {} };
 
   // ---- маршрут ----
   function parseRoute() {
@@ -296,18 +416,16 @@
 
   function setNav(name) {
     nav.querySelectorAll("button[data-go]").forEach((b) => {
-      const key = b.dataset.go;
-      b.classList.toggle("on", key === name || (name === "film" && key === "catalog"));
+      b.classList.toggle("on", b.dataset.go === name || (name === "film" && b.dataset.go === "catalog"));
     });
   }
-
   nav.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-go]");
     if (b) go("#/" + b.dataset.go);
   });
 
   function stopPlayer() {
-    if (S.hls) { try { S.hls.destroy(); } catch (_) {} S.hls = null; }
+    if (S.player) { try { S.player.destroy(); } catch (_) {} S.player = null; }
   }
 
   window.addEventListener("hashchange", render);
@@ -318,7 +436,7 @@
     const r = parseRoute();
     S.route = r.name;
     setNav(r.name);
-    if (r.name === "admin" && !(S.me.canUpload)) { go("#/catalog"); return; }
+    if (r.name === "admin" && !S.me.canUpload) { go("#/catalog"); return; }
     if (r.name === "admin" && r.tab === "users" && !S.me.canManage) { go("#/admin"); return; }
     if (r.name === "admin" && r.tab === "sales" && !S.me.isOwner) { go("#/admin"); return; }
     try {
@@ -338,18 +456,14 @@
     nav.querySelector("#navAdmin").classList.toggle("hidden", !S.me.canUpload);
   }
   async function loadConfig() {
-    S.config = await call("/api/config").catch(() => null) || { prices: { vipMonth: 100, vipYear: 900, editor: 500, admin: 2000 }, donate: [50, 100, 250, 500] };
+    S.config = (await call("/api/config").catch(() => null)) || { prices: { vipMonth: 100, vipYear: 900, editor: 500, admin: 2000 }, donate: [50, 100, 250, 500] };
   }
 
   // ---- каталог и поиск ----
   function filmCard(f) {
-    const cover = f.hasPoster
-      ? `<img src="/api/films/${f.id}/poster" alt="" loading="lazy" onerror="this.remove()">`
-      : "";
+    const cover = f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="" loading="lazy" onerror="this.remove()">` : "";
     return `<a class="card" href="#/film/${f.id}">
-      <div class="cover">${cover}
-        ${f.isVip ? '<span class="vip-badge">VIP</span><div class="vip-text">Для VIP</div>' : ""}
-      </div>
+      <div class="cover">${cover}${f.isVip ? '<span class="vip-badge">VIP</span><div class="vip-text">Для VIP</div>' : ""}</div>
       <div class="title">${esc(f.title)}</div>
       <div class="meta">${esc(f.releaseDate ? f.releaseDate.slice(0, 4) : "")}${f.creator ? " · " + esc(f.creator) : ""}</div>
     </a>`;
@@ -359,7 +473,7 @@
     S.films = await call("/api/films").catch(() => []);
     app.innerHTML = `
       <h1>Фильмы</h1>
-      <p class="sub">Смотрите фильмы и сериалы в лучшем качестве. Выбирайте 360p, 720p или 1080p.</p>
+      <p class="sub">Смотрите фильмы и сериалы. Качество от 144p до 1080p, скорость и субтитры.</p>
       ${S.films.length ? `<div class="grid">${S.films.map(filmCard).join("")}</div>` : '<div class="empty">Пока нет фильмов</div>'}`;
   }
 
@@ -378,7 +492,6 @@
     };
     input.addEventListener("input", draw);
     draw();
-    input.focus();
   }
 
   // ---- фильм ----
@@ -387,7 +500,6 @@
     S.filmId = id;
     if (!f) { app.innerHTML = '<div class="empty">Фильм не найден</div>'; return; }
     const poster = f.hasPoster ? `/api/films/${f.id}/poster` : "";
-    const starsHtml = (n, set) => [1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}" class="${i <= n ? "on" : ""}" ${set ? "" : "disabled"}>★</button>`).join("");
     const reviewsHtml = f.reviews.length
       ? f.reviews.map((r) => `<div class="item">
           <div class="head"><b>${esc(r.name)}</b><span>${"★".repeat(r.rating)}</span><span>${esc(fmtDate(r.date))}</span>
@@ -401,6 +513,7 @@
           <p>${esc(c.text)}</p></div>`).join("")
       : '<div class="sub" style="margin:0">Комментариев пока нет</div>';
     const canWrite = !S.me.guest && !f.locked;
+    const starsHtml = [1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}">★</button>`).join("");
 
     app.innerHTML = `
       <section class="hero" style="--poster: url('${poster}')">
@@ -415,15 +528,13 @@
               <div>Дата выхода: <b>${esc(fmtRelease(f.releaseDate))}</b></div>
               <div>Автор: <b>${esc(f.creator || "не указан")}</b></div>
               <div>Оценка: <b>${f.reviewCount ? f.rating.toFixed(1) + " (" + f.reviewCount + ")" : "нет"}</b></div>
-              ${f.duration ? `<div>Длительность: <b>${duration(f.duration)}</b></div>` : ""}
+              ${f.duration ? `<div>Длительность: <b>${fmtClock(f.duration)}</b></div>` : ""}
             </div>
           </div>
         </div>
       </section>
 
-      <section class="section">
-        <div id="player"></div>
-      </section>
+      <section class="section"><div id="player"></div></section>
 
       <section class="section">
         <h2>Описание</h2>
@@ -432,12 +543,12 @@
 
       <section class="section">
         <h2>Отзывы</h2>
-        ${canWrite ? `<div class="glass" id="reviewForm">
-          <div class="stars" id="starPick">${starsHtml(0, true)}</div>
-          <label class="field" style="margin-top:14px"><textarea id="reviewText" maxlength="1000" placeholder="Ваш отзыв"></textarea></label>
+        ${canWrite ? `<div class="glass" style="margin-bottom:14px">
+          <div class="stars" id="starPick">${starsHtml}</div>
+          <label class="field" style="margin:14px 0 14px"><textarea id="reviewText" maxlength="1000" placeholder="Ваш отзыв"></textarea></label>
           <button class="btn" id="sendReview">Оставить отзыв</button>
         </div>` : ""}
-        <div class="glass" style="margin-top:14px">${reviewsHtml}</div>
+        <div class="glass">${reviewsHtml}</div>
       </section>
 
       <section class="section">
@@ -450,7 +561,7 @@
         <div class="glass">${commentsHtml}</div>
       </section>`;
 
-    renderPlayer(f);
+    await mountFilmPlayer(f);
     bindFilm(f);
   }
 
@@ -489,7 +600,26 @@
     if (S.filmId) viewFilm(S.filmId);
   });
 
-  async function renderPlayer(f) {
+  // ---- плеер ----
+  const ICON = {
+    play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>',
+    replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>',
+    vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.8 6a9 9 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    mute: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    gear: '<svg viewBox="0 0 24 24"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8zm8.4 4.1l1.7-1.3-1.7-3-2 .8a7.6 7.6 0 0 0-1.6-1l-.3-2.1h-3.4l-.3 2.1a7.6 7.6 0 0 0-1.6 1l-2-.8-1.7 3 1.7 1.3a7.6 7.6 0 0 0 0 1.8l-1.7 1.3 1.7 3 2-.8c.5.4 1 .7 1.6 1l.3 2.1h3.4l.3-2.1c.6-.3 1.1-.6 1.6-1l2 .8 1.7-3-1.7-1.3c.1-.6.1-1.2 0-1.8z"/></svg>',
+    fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+    fsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+    pip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/></svg>',
+    back: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+    right: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+    tick: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    cc: '<svg viewBox="0 0 24 24"><path d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3.5 8.2c1.6 0 2.5-1 2.5-2.5v-.4h-1.2v.4c0 .8-.5 1.3-1.3 1.3s-1.3-.6-1.3-1.5v-1c0-.9.6-1.5 1.3-1.5s1.2.5 1.2 1.2h1.2c0-1.4-1-2.4-2.4-2.4-1.5 0-2.5 1.1-2.5 2.7v1c0 1.6 1 2.8 2.5 2.8zm8 0c1.6 0 2.5-1 2.5-2.5v-.4h-1.2v.4c0 .8-.5 1.3-1.3 1.3s-1.3-.6-1.3-1.5v-1c0-.9.6-1.5 1.3-1.5s1.2.5 1.2 1.2h1.2c0-1.4-1-2.4-2.4-2.4-1.5 0-2.5 1.1-2.5 2.7v1c0 1.6 1 2.8 2.5 2.8z"/></svg>',
+  };
+  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
+  // Открывает фильм: запрашивает ссылку доступа и монтирует плеер
+  async function mountFilmPlayer(f) {
     const box = $("#player");
     if (f.locked) {
       box.innerHTML = `<div class="locked"><div>
@@ -510,40 +640,380 @@
       return;
     }
     if (r.data.kind === "link") {
-      box.innerHTML = `<div class="player"><iframe src="${esc(r.data.src)}" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe></div>`;
+      box.innerHTML = `<div class="vp" style="aspect-ratio:16/9"><iframe src="${esc(r.data.src)}" style="width:100%;height:100%;border:0;border-radius:20px" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe></div>`;
       return;
     }
-    const vertical = f.height > f.width && f.width > 0;
-    box.innerHTML = `<div class="player ${vertical ? "vertical" : ""}"><video id="video" controls playsinline></video></div>
-      <div class="qualities" id="qualities"></div>`;
-    const video = $("#video");
-    if (window.Hls && Hls.isSupported()) {
-      const hls = new Hls({ capLevelToPlayerSize: false });
-      S.hls = hls;
-      hls.loadSource(r.data.src);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => drawQualities(hls));
-      hls.on(Hls.Events.LEVEL_SWITCHED, () => drawQualities(hls));
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = r.data.src;
-    } else {
-      box.innerHTML = '<div class="locked"><p class="sub" style="margin:0">Браузер не поддерживает воспроизведение</p></div>';
-    }
+    S.player = buildPlayer(f, r.data, box);
   }
 
-  function drawQualities(hls) {
-    const box = $("#qualities");
-    if (!box) return;
-    const levels = hls.levels.map((l, i) => ({ i, h: l.height })).sort((a, b) => b.h - a.h);
-    const cur = hls.currentLevel;
-    const auto = hls.autoLevelEnabled;
-    box.innerHTML = `<button data-q="-1" class="${auto ? "on" : ""}">Авто</button>` +
-      levels.map((l) => `<button data-q="${l.i}" class="${!auto && cur === l.i ? "on" : ""}">${l.h}p</button>`).join("");
-    box.onclick = (e) => {
-      const b = e.target.closest("button[data-q]");
+  function buildPlayer(f, data, box) {
+    const vertical = f.height > f.width && f.width > 0;
+    box.innerHTML = `
+      <div class="vp ${vertical ? "vertical" : ""} loading" id="vp" tabindex="0" aria-label="Видеоплеер">
+        <video id="vid" playsinline preload="metadata"></video>
+        <div class="vp-spin"></div>
+        <div class="vp-flash" id="vpFlash"></div>
+        <div class="vp-skip l" id="vpSkipL"></div>
+        <div class="vp-skip r" id="vpSkipR"></div>
+        <div class="vp-err hidden" id="vpErr"></div>
+        <div class="vp-subs" id="vpSubs"></div>
+        <div class="vp-menu hidden" id="vpMenu"></div>
+        <div class="vp-bar" id="vpBar">
+          <div class="vp-prog" id="vpProg" role="slider" aria-label="Перемотка">
+            <div class="vp-buf" id="vpBuf"></div>
+            <div class="vp-played" id="vpPlayed"></div>
+            <div class="vp-knob" id="vpKnob"></div>
+            <div class="vp-tip" id="vpTip">0:00</div>
+          </div>
+          <div class="vp-row">
+            <button class="vp-btn" id="vpPlay" aria-label="Воспроизвести">${ICON.play}</button>
+            <div class="vp-vol">
+              <button class="vp-btn" id="vpMute" aria-label="Звук">${ICON.vol}</button>
+              <input type="range" id="vpVol" min="0" max="1" step="0.02" aria-label="Громкость">
+            </div>
+            <span class="vp-time" id="vpTime">0:00 / 0:00</span>
+            <span class="vp-grow"></span>
+            <button class="vp-btn textual hidden" id="vpCc" aria-label="Субтитры" title="Субтитры (C)">CC</button>
+            <button class="vp-btn textual" id="vpSpeed" aria-label="Скорость" title="Скорость"></button>
+            <button class="vp-btn" id="vpSet" aria-label="Настройки" title="Настройки">${ICON.gear}</button>
+            <button class="vp-btn hidden" id="vpPip" aria-label="Картинка в картинке" title="Картинка в картинке">${ICON.pip}</button>
+            <button class="vp-btn" id="vpFs" aria-label="Полный экран" title="Полный экран (F)">${ICON.fs}</button>
+          </div>
+        </div>
+      </div>`;
+
+    const vp = $("#vp"), video = $("#vid"), bar = $("#vpBar"), prog = $("#vpProg"), menu = $("#vpMenu");
+    const subsBox = $("#vpSubs"), flash = $("#vpFlash");
+    const state = { hls: null, levels: [], menuPage: null, dragging: false, hideT: null, clickT: null, flashT: null, lastSave: 0, subTracks: [], curSub: "off" };
+    const dur = () => (isFinite(video.duration) && video.duration > 0 ? video.duration : (f.duration || 0));
+
+    // ---- источник ----
+    const useHls = window.Hls && Hls.isSupported();
+    if (useHls) {
+      const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60, capLevelToPlayerSize: false, startLevel: -1 });
+      state.hls = hls;
+      hls.loadSource(data.src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        state.levels = hls.levels.map((l, i) => ({ i, h: l.height })).filter((l) => l.h).sort((a, b) => b.h - a.h);
+        const want = state.levels.find((l) => l.h === prefs.quality);
+        hls.currentLevel = want ? want.i : -1;
+        renderMenu();
+      });
+      hls.on(Hls.Events.LEVEL_SWITCHED, () => { if (state.menuPage === "quality") renderMenu(); updateQualityBtn(); });
+      hls.on(Hls.Events.ERROR, (_, d) => {
+        if (!d.fatal) return;
+        if (d.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+        else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        else showError("Не удалось загрузить видео");
+      });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = data.src; // Safari: качество выбирает система
+    } else {
+      showError("Браузер не поддерживает воспроизведение");
+    }
+
+    // ---- субтитры: дорожки создаются из VTT, отображаем сами (без подложки) ----
+    const subs = data.subtitles || [];
+    subs.forEach((s) => {
+      const t = document.createElement("track");
+      t.kind = "subtitles"; t.src = s.src; t.srclang = s.lang; t.label = s.label;
+      video.appendChild(t);
+      if (!t.track) return; // старые браузеры без API текстовых дорожек
+      t.track.mode = "hidden";
+      t.track.oncuechange = () => drawCues();
+      state.subTracks.push({ lang: s.lang, label: s.label, track: t.track });
+    });
+    if (!subs.length) $("#vpCc").classList.add("hidden");
+    else $("#vpCc").classList.remove("hidden");
+    function setSub(lang) {
+      state.curSub = lang;
+      prefs.sub = lang; savePrefs();
+      state.subTracks.forEach((s) => { s.track.mode = s.lang === lang ? "hidden" : "disabled"; });
+      $("#vpCc").classList.toggle("on", lang !== "off");
+      if (lang === "off") subsBox.classList.remove("on");
+      drawCues();
+    }
+    function drawCues() {
+      const cur = state.subTracks.find((s) => s.lang === state.curSub);
+      if (!cur || !cur.track.activeCues) { subsBox.classList.remove("on"); subsBox.textContent = ""; return; }
+      const text = Array.from(cur.track.activeCues).map((c) => (c.text || "").replace(/<[^>]+>/g, "")).join("\n").trim();
+      subsBox.textContent = text;
+      subsBox.classList.toggle("on", !!text);
+    }
+    if (subs.length) setSub(subs.some((s) => s.lang === prefs.sub) ? prefs.sub : "off");
+
+    // ---- громкость, скорость ----
+    video.volume = prefs.volume; video.muted = prefs.muted;
+    video.playbackRate = prefs.speed;
+    $("#vpVol").value = prefs.muted ? 0 : prefs.volume;
+    $("#vpSpeed").textContent = prefs.speed === 1 ? "1×" : prefs.speed + "×";
+    $("#vpSpeed").classList.toggle("on", prefs.speed !== 1);
+
+    function updateQualityBtn() { if (state.menuPage === "quality") renderMenu(); }
+    function currentHeight() {
+      if (state.hls && state.hls.levels && state.hls.levels[state.hls.currentLevel]) return state.hls.levels[state.hls.currentLevel].height;
+      return video.videoHeight || 0;
+    }
+    function qualityLabel() {
+      if (!state.hls) return video.videoHeight ? video.videoHeight + "p" : "Авто";
+      if (state.hls.autoLevelEnabled) return "Авто" + (currentHeight() ? ` (${currentHeight()}p)` : "");
+      return currentHeight() + "p";
+    }
+
+    // ---- управление ----
+    const showError = (text) => {
+      const el = $("#vpErr"); el.textContent = text; el.classList.remove("hidden");
+      vp.classList.remove("loading");
+    };
+    function wake() {
+      vp.classList.remove("idle");
+      clearTimeout(state.hideT);
+      if (!video.paused && !state.menuPage) state.hideT = setTimeout(() => vp.classList.add("idle"), 2600);
+    }
+    function togglePlay() {
+      if (video.ended) { video.currentTime = 0; }
+      if (video.paused) video.play().catch(() => {}); else video.pause();
+    }
+    function flashIcon(html) {
+      flash.innerHTML = html; flash.classList.add("show");
+      clearTimeout(state.flashT); state.flashT = setTimeout(() => flash.classList.remove("show"), 450);
+    }
+    function skip(sec) {
+      const d = dur();
+      seekTo(video.currentTime + sec);
+      const el = sec < 0 ? $("#vpSkipL") : $("#vpSkipR");
+      el.textContent = (sec > 0 ? "+" : "") + sec + " сек";
+      el.classList.add("show");
+      clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 600);
+      wake();
+    }
+    function setVolume(v) {
+      v = Math.min(1, Math.max(0, v));
+      video.volume = v;
+      video.muted = v === 0;
+      prefs.volume = v > 0 ? v : prefs.volume; prefs.muted = video.muted; savePrefs();
+    }
+    function toggleMute() { video.muted = !video.muted; prefs.muted = video.muted; savePrefs(); }
+    function toggleFs() {
+      if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+      if (vp.requestFullscreen) vp.requestFullscreen().catch(() => {});
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+    }
+    function togglePip() {
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+      else video.requestPictureInPicture().catch(() => {});
+    }
+    function setSpeed(s) {
+      video.playbackRate = s; prefs.speed = s; savePrefs();
+      $("#vpSpeed").textContent = s === 1 ? "1×" : s + "×";
+      $("#vpSpeed").classList.toggle("on", s !== 1);
+      if (state.menuPage === "speed") renderMenu();
+    }
+
+    // ---- меню настроек (как на YouTube: главное -> качество / скорость / субтитры) ----
+    function openMenu(page) { state.menuPage = page; renderMenu(); vp.classList.remove("idle"); clearTimeout(state.hideT); }
+    function closeMenu() { state.menuPage = null; menu.classList.add("hidden"); menu.innerHTML = ""; wake(); }
+    function renderMenu() {
+      if (!state.menuPage) { menu.classList.add("hidden"); return; }
+      menu.classList.remove("hidden");
+      const row = (act, label, value) => `<button class="vp-mrow" data-act="${act}">${label}<span class="val">${esc(value)}</span>${ICON.right}</button>`;
+      const back = (title) => `<button class="vp-mrow back" data-act="back">${ICON.back}${title}</button>`;
+      const opt = (act, label, on) => `<button class="vp-mrow check ${on ? "on" : ""}" data-act="${act}">${label}<span class="tick">${ICON.tick}</span></button>`;
+      if (state.menuPage === "main") {
+        menu.innerHTML = [
+          row("quality", "Качество", state.hls ? qualityLabel() : "Авто"),
+          row("speed", "Скорость", video.playbackRate === 1 ? "Обычная" : video.playbackRate + "×"),
+          subs.length ? row("subs", "Субтитры", state.curSub === "off" ? "Выкл" : (state.subTracks.find((s) => s.lang === state.curSub) || {}).label || "Выкл") : "",
+        ].join("");
+      } else if (state.menuPage === "quality") {
+        const auto = state.hls ? state.hls.autoLevelEnabled : true;
+        const list = state.levels.map((l) => opt(`q:${l.h}`, `${l.h}p${l.h >= 1080 ? " · HD" : ""}`, !auto && prefs.quality === l.h));
+        menu.innerHTML = back("Качество") + opt("q:auto", "Авто" + (auto && currentHeight() ? ` (${currentHeight()}p)` : ""), auto) + (list.join("") || '<div class="vp-mrow" style="color:var(--muted)">Одно качество</div>');
+      } else if (state.menuPage === "speed") {
+        menu.innerHTML = back("Скорость") + SPEEDS.map((s) => opt(`s:${s}`, s === 1 ? "Обычная" : s + "×", video.playbackRate === s)).join("");
+      } else if (state.menuPage === "subs") {
+        menu.innerHTML = back("Субтитры") + opt("sub:off", "Выкл", state.curSub === "off") +
+          state.subTracks.map((s) => opt(`sub:${s.lang}`, s.label, state.curSub === s.lang)).join("");
+      }
+    }
+    // клики по панели и меню не доходят до клика по видео: меню перерисовывается во время клика
+    bar.addEventListener("click", (e) => e.stopPropagation());
+    menu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const b = e.target.closest("[data-act]");
       if (!b) return;
-      hls.currentLevel = Number(b.dataset.q);
-      drawQualities(hls);
+      const act = b.dataset.act;
+      if (act === "back") return openMenu("main");
+      if (act === "quality") return openMenu("quality");
+      if (act === "speed") return openMenu("speed");
+      if (act === "subs") return openMenu("subs");
+      if (act.startsWith("q:")) {
+        const v = act.slice(2);
+        if (v === "auto") { prefs.quality = "auto"; if (state.hls) state.hls.currentLevel = -1; }
+        else { prefs.quality = Number(v); if (state.hls) { const idx = state.levels.find((l) => l.h === Number(v)); if (idx) state.hls.currentLevel = idx.i; } }
+        savePrefs(); return renderMenu();
+      }
+      if (act.startsWith("s:")) { setSpeed(Number(act.slice(2))); return renderMenu(); }
+      if (act.startsWith("sub:")) { setSub(act.slice(4)); return renderMenu(); }
+    });
+    $("#vpSet").onclick = (e) => { e.stopPropagation(); state.menuPage ? closeMenu() : openMenu("main"); };
+    $("#vpCc").onclick = (e) => {
+      e.stopPropagation();
+      if (state.curSub !== "off") return setSub("off");
+      const first = state.subTracks[0];
+      if (first) setSub(first.lang);
+    };
+    $("#vpSpeed").onclick = (e) => {
+      e.stopPropagation();
+      const i = SPEEDS.indexOf(video.playbackRate);
+      setSpeed(SPEEDS[(i + 1) % SPEEDS.length]);
+    };
+    $("#vpPlay").onclick = (e) => { e.stopPropagation(); togglePlay(); };
+    $("#vpMute").onclick = (e) => { e.stopPropagation(); toggleMute(); };
+    $("#vpVol").addEventListener("input", (e) => setVolume(Number(e.target.value)));
+    $("#vpFs").onclick = (e) => { e.stopPropagation(); toggleFs(); };
+    if (document.pictureInPictureEnabled && video.requestPictureInPicture) $("#vpPip").classList.remove("hidden");
+    $("#vpPip").onclick = (e) => { e.stopPropagation(); togglePip(); };
+    if (!(document.fullscreenEnabled || video.webkitEnterFullscreen)) $("#vpFs").classList.add("hidden");
+
+    // ---- прогресс: перемотка мышью, пальцем и с тултипом ----
+    const ratioAt = (clientX) => {
+      const r = prog.getBoundingClientRect();
+      const x = Number(clientX);
+      if (!isFinite(x) || !r.width) return 0;
+      return Math.min(1, Math.max(0, (x - r.left) / r.width));
+    };
+    const seekTo = (t) => {
+      if (!isFinite(t)) return;
+      video.currentTime = Math.max(0, Math.min(t, dur() || t));
+    };
+    const paintProgress = (time) => {
+      const d = dur() || 1;
+      const pct = Math.min(100, (time / d) * 100);
+      $("#vpPlayed").style.width = pct + "%";
+      $("#vpKnob").style.left = pct + "%";
+    };
+    prog.addEventListener("pointerdown", (e) => {
+      state.dragging = true; vp.classList.add("scrubbing");
+      if (prog.setPointerCapture) prog.setPointerCapture(e.pointerId);
+      const t = ratioAt(e.clientX) * dur();
+      seekTo(t); paintProgress(t); wake();
+    });
+    prog.addEventListener("pointermove", (e) => {
+      const ratio = ratioAt(e.clientX);
+      const tip = $("#vpTip");
+      tip.textContent = fmtClock(ratio * dur());
+      tip.style.left = (ratio * 100) + "%";
+      if (state.dragging) { const t = ratio * dur(); seekTo(t); paintProgress(t); }
+    });
+    const endDrag = () => { state.dragging = false; vp.classList.remove("scrubbing"); };
+    prog.addEventListener("pointerup", endDrag);
+    prog.addEventListener("pointercancel", endDrag);
+
+    // ---- события видео ----
+    const paintTime = () => {
+      $("#vpTime").textContent = `${fmtClock(video.currentTime)} / ${fmtClock(dur())}`;
+      if (!state.dragging) paintProgress(video.currentTime);
+    };
+    video.addEventListener("loadedmetadata", () => {
+      vp.classList.remove("loading");
+      const saved = Number(localStorage.getItem("pos:" + f.id) || 0);
+      if (saved > 5 && saved < dur() - 15) {
+        video.currentTime = saved;
+        toast("Продолжено с " + fmtClock(saved));
+      }
+      paintTime();
+    });
+    video.addEventListener("timeupdate", () => {
+      paintTime();
+      const now = Date.now();
+      if (now - state.lastSave > 3000 && video.currentTime > 5) {
+        state.lastSave = now;
+        try { localStorage.setItem("pos:" + f.id, String(Math.floor(video.currentTime))); } catch (_) {}
+      }
+    });
+    video.addEventListener("progress", () => {
+      const d = dur() || 1; const b = video.buffered;
+      let end = 0;
+      for (let i = 0; i < b.length; i++) if (b.start(i) <= video.currentTime + 0.5 && b.end(i) > end) end = b.end(i);
+      $("#vpBuf").style.width = Math.min(100, (end / d) * 100) + "%";
+    });
+    video.addEventListener("play", () => { vp.classList.remove("loading"); $("#vpPlay").innerHTML = ICON.pause; $("#vpPlay").setAttribute("aria-label", "Пауза"); wake(); });
+    video.addEventListener("pause", () => { $("#vpPlay").innerHTML = ICON.play; $("#vpPlay").setAttribute("aria-label", "Воспроизвести"); vp.classList.remove("idle"); clearTimeout(state.hideT); });
+    video.addEventListener("ended", () => {
+      $("#vpPlay").innerHTML = ICON.replay; vp.classList.remove("idle");
+      try { localStorage.removeItem("pos:" + f.id); } catch (_) {}
+    });
+    video.addEventListener("waiting", () => vp.classList.add("loading"));
+    video.addEventListener("playing", () => vp.classList.remove("loading"));
+    video.addEventListener("canplay", () => vp.classList.remove("loading"));
+    video.addEventListener("volumechange", () => {
+      const v = video.muted ? 0 : video.volume;
+      $("#vpVol").value = v;
+      $("#vpMute").innerHTML = v === 0 ? ICON.mute : ICON.vol;
+    });
+    video.addEventListener("error", () => { if (!state.hls && video.error) showError("Не удалось загрузить видео"); });
+    const onFs = () => {
+      const on = document.fullscreenElement === vp;
+      vp.classList.toggle("fs", on);
+      $("#vpFs").innerHTML = on ? ICON.fsx : ICON.fs;
+    };
+    document.addEventListener("fullscreenchange", onFs);
+
+    // клик по видео: пауза/воспроизведение, двойной клик: полный экран
+    vp.addEventListener("click", (e) => {
+      if (e.target.closest(".vp-bar, .vp-menu")) return;
+      if (state.menuPage) { closeMenu(); return; }
+      wake();
+      clearTimeout(state.clickT);
+      state.clickT = setTimeout(() => { togglePlay(); flashIcon(video.paused ? ICON.pause : ICON.play); }, 210);
+    });
+    vp.addEventListener("dblclick", (e) => {
+      if (e.target.closest(".vp-bar, .vp-menu")) return;
+      clearTimeout(state.clickT);
+      const x = e.clientX - vp.getBoundingClientRect().left;
+      if (x < vp.clientWidth * 0.35) skip(-10);
+      else if (x > vp.clientWidth * 0.65) skip(10);
+      else toggleFs();
+    });
+    vp.addEventListener("pointermove", wake);
+    vp.addEventListener("touchstart", wake, { passive: true });
+    vp.addEventListener("mouseleave", () => { if (!video.paused && !state.menuPage) vp.classList.add("idle"); });
+
+    // клавиатура: когда плеер в фокусе
+    vp.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT") return;
+      const k = e.key;
+      let handled = true;
+      if (k === " " || k === "k" || k === "K") togglePlay();
+      else if (k === "ArrowRight") skip(5);
+      else if (k === "ArrowLeft") skip(-5);
+      else if (k === "l" || k === "L") skip(10);
+      else if (k === "j" || k === "J") skip(-10);
+      else if (k === "ArrowUp") setVolume(video.volume + 0.05);
+      else if (k === "ArrowDown") setVolume(video.volume - 0.05);
+      else if (k === "m" || k === "M") toggleMute();
+      else if (k === "f" || k === "F") toggleFs();
+      else if (k === "c" || k === "C") $("#vpCc").click();
+      else if (k === "p" || k === "P") togglePip();
+      else if (k === ">" || k === ".") setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(video.playbackRate) + 1)] || 2);
+      else if (k === "<" || k === ",") setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] || 0.25);
+      else if (/^[0-9]$/.test(k)) { if (dur()) seekTo((Number(k) / 10) * dur()); }
+      else if (k === "Escape") { if (state.menuPage) closeMenu(); else if (document.fullscreenElement) toggleFs(); }
+      else handled = false;
+      if (handled) { e.preventDefault(); wake(); }
+    });
+
+    wake();
+    return {
+      destroy() {
+        clearTimeout(state.hideT); clearTimeout(state.clickT); clearTimeout(state.flashT);
+        document.removeEventListener("fullscreenchange", onFs);
+        if (state.hls) { try { state.hls.destroy(); } catch (_) {} }
+        video.pause(); video.removeAttribute("src"); video.load();
+        if (document.fullscreenElement === vp) document.exitFullscreen().catch(() => {});
+      },
     };
   }
 
@@ -559,11 +1029,7 @@
     const link = r.data.invoice;
     if (tg && tg.openInvoice) {
       tg.openInvoice(link, async (status) => {
-        if (status === "paid") {
-          toast("Оплата прошла");
-          await loadMe();
-          if (S.route !== "film") render();
-        }
+        if (status === "paid") { toast("Оплата прошла"); await loadMe(); if (S.route !== "film") render(); }
       });
     } else {
       window.open(link, "_blank");
@@ -572,8 +1038,7 @@
 
   document.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-pay]");
-    if (!b) return;
-    startPayment(b.dataset.pay, Number(b.dataset.amount || 0));
+    if (b) startPayment(b.dataset.pay, Number(b.dataset.amount || 0));
   });
 
   function viewVip() {
@@ -610,9 +1075,7 @@
       app.innerHTML = `<h1>Профиль</h1><p class="sub">Откройте приложение из Telegram, чтобы увидеть профиль.</p>`;
       return;
     }
-    const vipLine = S.me.vipActive
-      ? `VIP до ${esc(fmtDate(S.me.vipUntil))}`
-      : "VIP нет";
+    const vipLine = S.me.vipActive ? `VIP до ${esc(fmtDate(S.me.vipUntil))}` : "VIP нет";
     app.innerHTML = `
       <h1>${esc(S.me.name)}</h1>
       <p class="sub">Роль: ${esc(S.me.roleTitle)} · ${vipLine}</p>
@@ -628,16 +1091,14 @@
   }
 
   // ---- админ-панель ----
-  function adminTabs(current) {
+  async function viewAdmin(r) {
+    const tab = r.tab || "films";
     const tabs = [["films", "Фильмы"], ["upload", "Загрузить"]];
     if (S.me.canManage) tabs.push(["users", "Пользователи"]);
     if (S.me.isOwner) tabs.push(["sales", "Продажи"]);
-    return `<div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === current ? "on" : ""}">${t}</button>`).join("")}</div>`;
-  }
-
-  async function viewAdmin(r) {
-    const tab = r.tab || "films";
-    app.innerHTML = `<h1>Админ-панель</h1><p class="sub">Видео загружаются здесь без ограничения размера.</p>${adminTabs(tab)}<div id="admin"></div>`;
+    app.innerHTML = `<h1>Админ-панель</h1><p class="sub">Видео загружаются здесь, размер файла до 2 ГБ.</p>
+      <div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${t}</button>`).join("")}</div>
+      <div id="admin"></div>`;
     app.onclick = (e) => {
       const t = e.target.closest("button[data-tab]");
       if (t) go(`#/admin${t.dataset.tab === "films" ? "" : "/" + t.dataset.tab}`);
@@ -667,24 +1128,44 @@
       </div>
       ${String(f.id) === String(editId) ? editForm(f) : ""}`).join("");
     box.onclick = async (e) => {
-      const ed = e.target.closest("[data-edit]");
-      const rd = e.target.closest("[data-redo]");
-      const dl = e.target.closest("[data-del]");
-      if (ed) { go(`#/admin/film/${ed.dataset.edit}`); }
-      if (rd) { await call(`/api/admin/films/${rd.dataset.redo}/reprocess`, { body: {} }).catch(() => null); toast("Поставлено в очередь"); adminFilms(); }
-      if (dl && confirm("Удалить фильм вместе с файлами?")) {
-        await call(`/api/admin/films/${dl.dataset.del}/delete`, { body: {} }).catch(() => null);
-        toast("Фильм удалён"); adminFilms();
+      const t = (sel) => e.target.closest(sel);
+      if (t("[data-edit]")) return go(`#/admin/film/${t("[data-edit]").dataset.edit}`);
+      if (t("[data-redo]")) { await call(`/api/admin/films/${t("[data-redo]").dataset.redo}/reprocess`, { body: {} }).catch(() => null); toast("Поставлено в очередь"); return adminFilms(); }
+      if (t("[data-del]") && confirm("Удалить фильм вместе с файлами?")) {
+        await call(`/api/admin/films/${t("[data-del]").dataset.del}/delete`, { body: {} }).catch(() => null);
+        toast("Фильм удалён"); return adminFilms();
       }
-      const save = e.target.closest("[data-save]");
-      if (save) await saveEdit(save.dataset.save);
+      if (t("[data-save]")) return saveEdit(t("[data-save]").dataset.save);
+      if (t("[data-subadd]")) return addSubtitle(t("[data-subadd]").dataset.subadd);
+      if (t("[data-subdel]")) {
+        const b = t("[data-subdel]");
+        await call(`/api/admin/films/${b.dataset.film}/subtitles/${b.dataset.subdel}/delete`, { body: {} }).catch(() => null);
+        toast("Субтитры удалены"); return adminFilms(b.dataset.film);
+      }
     };
     if (editId) {
-      box.querySelector("#posterInput") && (box.querySelector("#posterInput").onchange = (ev) => uploadPoster(editId, ev.target.files[0]));
+      const pi = box.querySelector("#posterInput");
+      if (pi) pi.onchange = (ev) => uploadPoster(editId, ev.target.files[0]);
     }
   }
 
   function editForm(f) {
+    const subs = (f.subtitles || []);
+    const subChips = subs.length
+      ? `<div class="chips">${subs.map((l) => `<span class="chip">${esc(l.toUpperCase())}<button data-subdel="${esc(l)}" data-film="${f.id}" aria-label="Удалить">×</button></span>`).join("")}</div>`
+      : '<p class="hint">Субтитров пока нет. Встроенные дорожки из видео добавляются при обработке.</p>';
+    const subForm = f.kind === "video" ? `
+      <h2 style="margin-top:22px">Субтитры</h2>
+      ${subChips}
+      <label class="field"><span>Язык</span>
+        <select id="sub-lang-${f.id}">
+          <option value="ru">Русский</option><option value="en">English</option><option value="uk">Українська</option>
+          <option value="de">Deutsch</option><option value="fr">Français</option><option value="es">Español</option>
+          <option value="tr">Türkçe</option><option value="other">Другой (код языка в имени файла)</option>
+        </select></label>
+      <label class="field"><span>Файл субтитров (SRT, VTT, ASS, SSA)</span><input type="file" id="sub-file-${f.id}" accept=".srt,.vtt,.ass,.ssa,.sub"></label>
+      <div class="progress" id="sub-progress-${f.id}"><div></div></div>
+      <button class="btn ghost small" data-subadd="${f.id}">Загрузить субтитры</button>` : "";
     return `<div class="glass" style="margin:6px 0 22px" id="edit-${f.id}">
       <h2>Редактирование</h2>
       <label class="field"><span>Название</span><input type="text" id="e-title" value="${esc(f.title)}" maxlength="120"></label>
@@ -695,7 +1176,8 @@
       <label class="field"><span>Обложка</span><input type="file" id="posterInput" accept="image/*"></label>
       <label class="check"><input type="checkbox" id="e-vip" ${f.isVip ? "checked" : ""}> Фильм только для VIP</label>
       <label class="check" style="margin-top:10px"><input type="checkbox" id="e-active" ${f.isActive ? "checked" : ""}> Показывать в каталоге</label>
-      <div class="row" style="margin-top:18px">
+      ${subForm}
+      <div class="row" style="margin-top:20px">
         <button class="btn" data-save="${f.id}">Сохранить</button>
         <button class="btn ghost" onclick="location.hash='#/admin'">Закрыть</button>
       </div>
@@ -712,6 +1194,25 @@
     if (r) { toast("Сохранено"); adminFilms(); }
   }
 
+  async function addSubtitle(id) {
+    const file = $(`#sub-file-${id}`).files[0];
+    if (!file) { toast("Выберите файл субтитров"); return; }
+    let lang = $(`#sub-lang-${id}`).value;
+    if (lang === "other") {
+      const code = (prompt("Код языка, например: ja, ko, zh", "ja") || "").trim().toLowerCase();
+      if (!/^[a-z]{2,3}$/.test(code)) { toast("Введите код языка из двух или трёх латинских букв"); return; }
+      lang = code;
+    }
+    const fd = new FormData();
+    fd.append("lang", lang);
+    fd.append("file", file, file.name);
+    try {
+      await upload(`/api/admin/films/${id}/subtitles`, fd, $(`#sub-progress-${id}`));
+      toast("Субтитры добавлены");
+      adminFilms(id);
+    } catch (_) {}
+  }
+
   function uploadPoster(id, file) {
     if (!file) return;
     const fd = new FormData();
@@ -726,15 +1227,19 @@
       xhr.setRequestHeader("X-Init-Data", initData());
       if (progressEl) {
         progressEl.style.display = "block";
+        progressEl.firstElementChild.style.width = "0%";
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) progressEl.firstElementChild.style.width = Math.round(e.loaded / e.total * 100) + "%"; };
       }
       xhr.onload = () => {
         let data = {};
         try { data = JSON.parse(xhr.responseText); } catch (_) {}
         if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-        else { toast(errText(data.error)); reject(new Error(data.error)); }
+        else {
+          toast(xhr.status === 413 ? errText("too_large") : errText(data.error));
+          reject(new Error(data.error || xhr.status));
+        }
       };
-      xhr.onerror = () => { toast("Сеть недоступна"); reject(new Error("network")); };
+      xhr.onerror = () => { toast("Сеть недоступна или соединение прервано"); reject(new Error("network")); };
       xhr.send(fd);
     });
   }
@@ -743,7 +1248,10 @@
     $("#admin").innerHTML = `<div class="glass">
       <label class="field"><span>Тип</span>
         <select id="u-kind"><option value="video">Загрузить видео</option><option value="link">Ссылка (TikTok, YouTube)</option></select></label>
-      <div id="u-video"><label class="field"><span>Видеофайл (любого размера)</span><input type="file" id="u-file" accept="video/*"></label></div>
+      <div id="u-video">
+        <label class="field"><span>Видеофайл</span><input type="file" id="u-file" accept="video/*"></label>
+        <p class="hint">Максимум 2 ГБ. Видео переводится в 144p, 240p, 360p, 480p, 720p и 1080p. Субтитры добавляются после загрузки.</p>
+      </div>
       <div id="u-link" class="hidden"><label class="field"><span>Ссылка</span><input type="url" id="u-url" placeholder="https://"></label></div>
       <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
       <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
@@ -770,6 +1278,7 @@
       if (kind.value === "video") {
         const f = $("#u-file").files[0];
         if (!f) { toast("Выберите видеофайл"); return; }
+        if (f.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
         fd.append("video", f, f.name);
       } else {
         fd.append("url", $("#u-url").value.trim());
@@ -787,19 +1296,21 @@
     };
   }
 
+  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
   async function adminUsers() {
     const box = $("#admin");
     const isOwner = S.me.isOwner;
-    box.innerHTML = `<div class="row" style="margin-bottom:16px">
-        <input type="search" id="uq" placeholder="ID, имя или @username" style="flex:1"></div>
+    const roleName = { user: "Пользователь", editor: "Редактор", admin: "Админ", owner: "Владелец" };
+    box.innerHTML = `<div class="row" style="margin-bottom:16px"><input type="search" id="uq" placeholder="ID, имя или @username" style="flex:1"></div>
       <div id="ulist"></div>`;
     const draw = async () => {
       const users = await call("/api/admin/users?q=" + encodeURIComponent($("#uq").value.trim())).catch(() => []);
       $("#ulist").innerHTML = users.length ? users.map((u) => {
         const roleOpts = isOwner ? ["user", "editor", "admin"] : ["user", "editor"];
         return `<div class="list-row">
-          <div class="info"><b>${esc(u.name)}</b><small>${u.id} · ${esc(u.role === "owner" ? "Владелец" : u.role === "admin" ? "Админ" : u.role === "editor" ? "Редактор" : "Пользователь")} · ${u.vipActive ? "VIP до " + esc(fmtDate(u.vipUntil)) : "без VIP"}</small></div>
-          ${u.role === "owner" ? "" : `<select data-role="${u.id}" style="width:auto;padding:8px 12px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${{ user: "Пользователь", editor: "Редактор", admin: "Админ" }[r]}</option>`).join("")}</select>`}
+          <div class="info"><b>${esc(u.name)}</b><small>${u.id} · ${roleName[u.role] || u.role} · ${u.vipActive ? "VIP до " + esc(fmtDate(u.vipUntil)) : "без VIP"}</small></div>
+          ${u.role === "owner" ? "" : `<select data-role="${u.id}" style="width:auto;padding:8px 12px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${roleName[r]}</option>`).join("")}</select>`}
           ${u.role === "owner" ? "" : `<button class="btn ghost small" data-vip="${u.id}" data-days="30">VIP 30</button>
           <button class="btn ghost small" data-vip="${u.id}" data-days="365">VIP 365</button>
           ${u.vipActive ? `<button class="btn danger small" data-vip="${u.id}" data-days="-30">Отозвать 30</button>` : ""}`}
@@ -821,8 +1332,6 @@
     };
     draw();
   }
-
-  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
   async function adminSales() {
     const box = $("#admin");
