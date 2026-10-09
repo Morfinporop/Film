@@ -15,7 +15,32 @@
       background: var(--tg-theme-bg-color, #111);
       color: var(--tg-theme-text-color, #eee);
     }
-    h1 { font-size: 18px; margin: 4px 4px 12px; }
+    h1 { font-size: 18px; margin: 4px 4px 10px; }
+    .search {
+      width: 100%;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 10px;
+      font: inherit;
+      background: var(--tg-theme-secondary-bg-color, #1c1c1e);
+      color: inherit;
+      outline: none;
+      margin-bottom: 10px;
+    }
+    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .tab {
+      flex: 1;
+      border: 0;
+      border-radius: 10px;
+      padding: 8px 4px;
+      font: inherit;
+      font-size: 13px;
+      background: var(--tg-theme-secondary-bg-color, #1c1c1e);
+      color: inherit;
+      opacity: .6;
+      cursor: pointer;
+    }
+    .tab.on { opacity: 1; font-weight: 600; background: var(--tg-theme-button-color, #2a7de1); color: var(--tg-theme-button-text-color, #fff); }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .card {
       border: 0;
@@ -37,12 +62,19 @@
       background: linear-gradient(135deg, #3a3a3c, #1c1c1e);
     }
     .title { padding: 8px 10px 10px; font-size: 14px; font-weight: 600; line-height: 1.25; }
-    .badge { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 500; opacity: .7; }
+    .meta { display: block; margin-top: 4px; font-size: 11px; font-weight: 500; opacity: .7; }
     .state { text-align: center; opacity: .7; margin-top: 40px; }
   </style>
 </head>
 <body>
-  <h1>🍿 Каталог фильмов</h1>
+  <h1>Каталог фильмов</h1>
+  <input id="search" class="search" type="search" placeholder="Поиск по названию" autocomplete="off" />
+  <div class="tabs">
+    <button class="tab on" data-filter="all" type="button">Все</button>
+    <button class="tab" data-filter="link" type="button">Ссылки</button>
+    <button class="tab" data-filter="video" type="button">В боте</button>
+    <button class="tab" data-filter="top" type="button">Популярное</button>
+  </div>
   <div id="grid" class="grid"></div>
   <div id="state" class="state">Загрузка…</div>
 
@@ -51,6 +83,9 @@
     if (tg) { tg.ready(); tg.expand(); }
 
     let botUsername = null;
+    let films = [];
+    let filter = "all";
+    let query = "";
 
     function openFilm(film) {
       if (film.kind === "link" && film.url) {
@@ -62,13 +97,29 @@
       if (tg) tg.openTelegramLink(link); else window.open(link, "_blank");
     }
 
-    function render(films) {
+    function visibleFilms() {
+      let list = films.slice();
+      if (filter === "link") list = list.filter((f) => f.kind === "link");
+      if (filter === "video") list = list.filter((f) => f.kind === "video");
+      if (filter === "top") list.sort((a, b) => b.views - a.views);
+      if (query) {
+        const q = query.toLowerCase();
+        list = list.filter((f) => f.title.toLowerCase().includes(q));
+      }
+      return list;
+    }
+
+    function render() {
       const grid = document.getElementById("grid");
       const state = document.getElementById("state");
-      if (!films.length) { state.textContent = "Пока в каталоге пусто"; return; }
-      state.remove();
+      const list = visibleFilms();
+      grid.textContent = "";
 
-      for (const film of films) {
+      if (!films.length) { state.textContent = "Пока в каталоге пусто"; state.hidden = false; return; }
+      if (!list.length) { state.textContent = "Ничего не найдено"; state.hidden = false; return; }
+      state.hidden = true;
+
+      for (const film of list) {
         const card = document.createElement("button");
         card.className = "card";
         card.type = "button";
@@ -84,25 +135,38 @@
         const title = document.createElement("div");
         title.className = "title";
         title.textContent = film.title;
-        const badge = document.createElement("span");
-        badge.className = "badge";
-        badge.textContent = film.kind === "video" ? "▶ Смотреть в боте" : "🔗 Смотреть";
-        title.appendChild(document.createElement("br"));
-        title.appendChild(badge);
+        const meta = document.createElement("span");
+        meta.className = "meta";
+        meta.textContent = film.kind === "video" ? "Смотреть в боте" : "Смотреть";
+        title.appendChild(meta);
         card.appendChild(title);
 
         grid.appendChild(card);
       }
     }
 
+    document.getElementById("search").addEventListener("input", (e) => {
+      query = e.target.value.trim();
+      render();
+    });
+
+    for (const tab of document.querySelectorAll(".tab")) {
+      tab.addEventListener("click", () => {
+        filter = tab.dataset.filter;
+        document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === tab));
+        render();
+      });
+    }
+
     (async () => {
       try {
-        const [cfg, films] = await Promise.all([
+        const [cfg, data] = await Promise.all([
           fetch("/api/config").then((r) => r.json()),
           fetch("/api/films").then((r) => r.json()),
         ]);
         botUsername = cfg.botUsername;
-        render(films);
+        films = data;
+        render();
       } catch (e) {
         document.getElementById("state").textContent = "Не удалось загрузить каталог";
       }
