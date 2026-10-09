@@ -93,8 +93,6 @@ class Config:
     background_url: str
     vip_month: int
     vip_year: int
-    editor_price: int
-    admin_price: int
 
     @property
     def webapp_url(self) -> str | None:
@@ -166,10 +164,8 @@ def load_config(env: Any = os.environ) -> Config:
         webhook_secret=secret,
         db_path=(env.get("DB_PATH") or "").strip() or str(BASE_DIR / "data" / "film.db"),
         background_url=(env.get("BACKGROUND_URL") or "").strip() or DEFAULT_BACKGROUND,
-        vip_month=_price(env, "VIP_MONTH_PRICE", 100),
+        vip_month=_price(env, "VIP_MONTH_PRICE", 199),
         vip_year=_price(env, "VIP_YEAR_PRICE", 900),
-        editor_price=_price(env, "EDITOR_PRICE", 500),
-        admin_price=_price(env, "ADMIN_PRICE", 2000),
     )
 
 
@@ -451,7 +447,26 @@ class Database:
     def delete_film(self, film_id: int) -> None:
         self.conn.execute("DELETE FROM reviews WHERE film_id = ?", (film_id,))
         self.conn.execute("DELETE FROM comments WHERE film_id = ?", (film_id,))
+        self.conn.execute("DELETE FROM watch WHERE film_id = ?", (film_id,))
         self.conn.execute("DELETE FROM films WHERE id = ?", (film_id,))
+
+    # ---- обслуживание базы ----
+    def film_ids(self) -> set[int]:
+        return {r["id"] for r in self._all("SELECT id FROM films")}
+
+    def prune_watch(self, keep_per_user: int) -> int:
+        """Удаляет строки просмотров удалённых фильмов и обрезает историю до keep_per_user на пользователя."""
+        cur = self.conn.execute("DELETE FROM watch WHERE film_id NOT IN (SELECT id FROM films)")
+        removed = cur.rowcount
+        cur = self.conn.execute(
+            """DELETE FROM watch WHERE rowid IN (
+                 SELECT rowid FROM (
+                   SELECT rowid, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY updated_at DESC) AS rn FROM watch
+                 ) WHERE rn > ?)""", (keep_per_user,))
+        return removed + cur.rowcount
+
+    def vacuum(self) -> None:
+        self.conn.execute("VACUUM")
 
     def list_films(self, *, public: bool = True, owner_id: int | None = None, limit: int = 500) -> list[dict]:
         where, params = [], []
@@ -781,6 +796,53 @@ class Transcoder:
         log.info("фильм %s готов: %s", film_id, [v[0] for v in variants])
 
 
+STORAGE_EVERY = 6 * 3600          # как часто чистить, секунды
+UPLOAD_STALE = 24 * 3600          # незавершённая загрузка без записей дольше суток
+AVATAR_TTL = 7 * 24 * 3600        # аватарки кэшируются на неделю
+HISTORY_KEEP = 200                # записей истории просмотров на пользователя
+
+
+def clean_storage(db: Database, media_dir: Path) -> dict:
+    """Чистит кэш и базу. Возвращает счётчики для лога."""
+    report = {"orphan_films": 0, "tmp": 0, "avatars": 0, "watch": 0}
+    now = time.time()
+    ids = db.film_ids()
+    if media_dir.is_dir():
+        for d in media_dir.iterdir():
+            if d.is_dir() and d.name.isdigit() and int(d.name) not in ids:
+                shutil.rmtree(d, ignore_errors=True)
+                report["orphan_films"] += 1
+    tmp = media_dir / "tmp"
+    if tmp.is_dir():
+        for f in tmp.iterdir():
+            if now - f.stat().st_mtime > UPLOAD_STALE:
+                shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
+                report["tmp"] += 1
+    avatars = media_dir.parent / "avatars"
+    if avatars.is_dir():
+        for f in avatars.iterdir():
+            ttl = AVATAR_TTL if f.suffix == ".jpg" else AVATAR_TTL // 7  # отметки «нет фото» живут сутки
+            if now - f.stat().st_mtime > ttl:
+                f.unlink(missing_ok=True)
+                report["avatars"] += 1
+    report["watch"] = db.prune_watch(HISTORY_KEEP)
+    db.conn.commit()
+    if any(report.values()):
+        db.vacuum()  # после удалений возвращаем место на диске
+    return report
+
+
+async def storage_loop(db: Database, media_dir: Path) -> None:
+    await asyncio.sleep(120)
+    while True:
+        try:
+            report = await asyncio.to_thread(clean_storage, db, media_dir)
+            log.info("очистка: %s", report)
+        except Exception:
+            log.exception("очистка не удалась")
+        await asyncio.sleep(STORAGE_EVERY)
+
+
 def _secret(cfg: Config) -> bytes:
     return hashlib.sha256(b"media:" + cfg.bot_token.encode()).digest()
 
@@ -859,13 +921,11 @@ PAY_LABELS = {
     "vip_month": "VIP на месяц",
     "vip_year": "VIP на год",
     "donate": "Поддержка проекта",
-    "role_editor": "Права редактора",
-    "role_admin": "Права админа",
 }
 
 
 def parse_payload(payload: str) -> tuple[str, int]:
-    """Payload инвойса: 'vip_month', 'vip_year', 'donate:<n>', 'role_editor', 'role_admin'."""
+    """Payload инвойса: 'vip_month', 'vip_year', 'donate:<n>'."""
     kind, _, arg = payload.partition(":")
     return kind, int(arg) if arg.isdigit() else 0
 
@@ -874,8 +934,6 @@ def expected_amount(cfg: Config, kind: str, arg: int) -> int | None:
     return {
         "vip_month": cfg.vip_month,
         "vip_year": cfg.vip_year,
-        "role_editor": cfg.editor_price,
-        "role_admin": cfg.admin_price,
     }.get(kind) or (arg if kind == "donate" and arg in DONATE_OPTIONS else None)
 
 
@@ -945,10 +1003,6 @@ def build_router(cfg: Config, db: Database, transcoder: Transcoder) -> Router:
         ok, error = True, None
         if expected is None or expected != query.total_amount:
             ok, error = False, "Сумма оплаты не совпадает с ценой"
-        elif kind == "role_editor" and at_least(role, EDITOR):
-            ok, error = False, "У вас уже есть эта роль"
-        elif kind == "role_admin" and at_least(role, ADMIN):
-            ok, error = False, "У вас уже есть эта роль"
         await bot.answer_pre_checkout_query(query.id, ok=ok, error_message=error)
 
     @router.message(F.successful_payment)
@@ -976,15 +1030,11 @@ def build_router(cfg: Config, db: Database, transcoder: Transcoder) -> Router:
 
 
 def apply_sale(cfg: Config, db: Database, uid: int, kind: str, amount: int) -> None:
-    """Эффект оплаты: продление VIP или выдача роли. Донат — только в статистику."""
+    """Эффект оплаты: продление VIP. Донат — только в статистику. Роли не продаются."""
     if kind == "vip_month":
         db.grant_vip(uid, VIP_MONTH_DAYS)
     elif kind == "vip_year":
         db.grant_vip(uid, VIP_YEAR_DAYS)
-    elif kind in ("role_editor", "role_admin"):
-        target = EDITOR if kind == "role_editor" else ADMIN
-        if RANK[db.get_role(uid)] < RANK[target]:
-            db.set_role(uid, target, added_by=cfg.owner_id)
 
 
 # ============================================================================
@@ -1192,8 +1242,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         return _json({
             "botUsername": bot_username,
             "background": cfg.background_url,
-            "prices": {"vipMonth": cfg.vip_month, "vipYear": cfg.vip_year,
-                       "editor": cfg.editor_price, "admin": cfg.admin_price},
+            "prices": {"vipMonth": cfg.vip_month, "vipYear": cfg.vip_year},
             "donate": list(DONATE_OPTIONS),
         })
 
@@ -1334,17 +1383,13 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             return _err("bad_request", 400)
         if kind == "donate":
             payload_arg = amount
-        elif kind in ("vip_month", "vip_year", "role_editor", "role_admin"):
+        elif kind in ("vip_month", "vip_year"):
             payload_arg = 0
         else:
             return _err("bad_request", 400)
         expected = expected_amount(cfg, kind, payload_arg)
         if expected is None:
             return _err("bad_amount", 400)
-        if kind == "role_editor" and at_least(user["role"], EDITOR):
-            return _err("already", 400)
-        if kind == "role_admin" and at_least(user["role"], ADMIN):
-            return _err("already", 400)
         payload = f"{kind}:{payload_arg}" if kind == "donate" else kind
         link = await bot.create_invoice_link(
             title=PAY_LABELS[kind][:32],
@@ -1854,6 +1899,7 @@ async def main() -> None:
             if film["status"] != "failed" or film["video_file_id"]:
                 transcoder.enqueue(film["id"])
     transcoder.start()
+    storage_task = asyncio.create_task(storage_loop(db, cfg.media_dir))
 
     await bot.set_my_commands([BotCommand(command="start", description="Открыть")])
     if cfg.webapp_url:
@@ -1885,6 +1931,7 @@ async def main() -> None:
     finally:
         log.info("останавливаюсь")
         await transcoder.stop()
+        storage_task.cancel()
         if poller:
             poller.cancel()
         await runner.cleanup()

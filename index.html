@@ -90,6 +90,12 @@
   .hint { color: var(--muted); font-size: 13px; line-height: 1.5; margin: -6px 0 14px; }
 
   /* ---- сетка фильмов ---- */
+  .pager { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 32px 0 8px; }
+  .pg-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; padding: 0;
+    background: rgba(0,0,0,.45); color: var(--text); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .pg-btn:disabled { opacity: .3; cursor: default; }
+  .pg-btn svg { width: 20px; height: 20px; }
+  .pg-count { min-width: 56px; text-align: center; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--muted); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
   .card { cursor: pointer; text-decoration: none; }
   .cover {
@@ -269,11 +275,12 @@
   .vp-time { color: #fff; font-size: 13px; font-variant-numeric: tabular-nums; margin-left: 8px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
   .vp-grow { flex: 1; }
   .vp-menu {
-    position: absolute; right: 12px; bottom: 64px; min-width: 250px; max-width: calc(100% - 24px); max-height: 70%; overflow: auto;
+    position: absolute; right: 12px; bottom: 64px; width: 210px; max-width: calc(100% - 24px); max-height: 60%; overflow: auto;
     background: var(--field); border: 1px solid var(--line); border-radius: 18px; padding: 6px;
     backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
     color: var(--text); font-size: 14px; z-index: 3;
   }
+  .vp-menu .vp-mrow { padding: 8px 10px; font-size: 13px; gap: 8px; }
   .vp-mrow {
     width: 100%; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--text);
     padding: 11px 12px; border-radius: 12px; text-align: left;
@@ -514,12 +521,42 @@
     </a>`;
   }
 
+  const PER_PAGE = 6;
+  const arrowSvg = (dir) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${dir < 0 ? '<path d="M15 6l-6 6 6 6"/>' : '<path d="M9 6l6 6-6 6"/>'}</svg>`;
+  // список с пагинацией: 6 фильмов на страницу, внизу ← 1/20 →
+  function pagedGrid(list, page) {
+    const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+    const cur = Math.min(Math.max(1, page), pages);
+    const items = list.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+    const pager = pages > 1 ? `<nav class="pager" aria-label="Страницы">
+        <button class="pg-btn" data-pg="${cur - 1}" ${cur === 1 ? "disabled" : ""} aria-label="Назад">${arrowSvg(-1)}</button>
+        <span class="pg-count">${cur}/${pages}</span>
+        <button class="pg-btn" data-pg="${cur + 1}" ${cur === pages ? "disabled" : ""} aria-label="Вперёд">${arrowSvg(1)}</button>
+      </nav>` : "";
+    return { html: `<div class="grid">${items.map(filmCard).join("")}</div>${pager}`, page: cur };
+  }
+  function bindPager(root, redraw) {
+    root.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-pg]");
+      if (!b || b.disabled) return;
+      redraw(Number(b.dataset.pg));
+      window.scrollTo({ top: 0 });
+    });
+  }
+
   async function viewCatalog() {
     S.films = await call("/api/films").catch(() => []);
+    const draw = (p) => {
+      const g = pagedGrid(S.films, p);
+      $("#list").innerHTML = S.films.length ? g.html : '<div class="empty">Пока нет фильмов</div>';
+      S.catalogPage = g.page;
+    };
     app.innerHTML = `
       <h1>Фильмы</h1>
       <p class="sub">Смотрите фильмы и сериалы. Качество от 144p до 1080p, скорость и субтитры.</p>
-      ${S.films.length ? `<div class="grid">${S.films.map(filmCard).join("")}</div>` : '<div class="empty">Пока нет фильмов</div>'}`;
+      <div id="list"></div>`;
+    draw(S.catalogPage || 1);
+    bindPager($("#list"), (p) => { draw(p); });
   }
 
   async function viewSearch() {
@@ -530,13 +567,15 @@
       <input type="search" id="q" placeholder="Что посмотреть?" value="${esc(S.search)}" autocomplete="off">
       <div class="section" id="res"></div>`;
     const input = $("#q");
-    const draw = () => {
-      S.search = input.value.trim().toLowerCase();
-      const list = S.films.filter((f) => !S.search || [f.title, f.creator, f.description].join(" ").toLowerCase().includes(S.search));
-      $("#res").innerHTML = list.length ? `<div class="grid">${list.map(filmCard).join("")}</div>` : '<div class="empty">Ничего не найдено</div>';
+    let list = [];
+    const draw = (p = 1) => {
+      list = S.films.filter((f) => !S.search || [f.title, f.creator, f.description].join(" ").toLowerCase().includes(S.search));
+      const g = pagedGrid(list, p);
+      $("#res").innerHTML = list.length ? g.html : '<div class="empty">Ничего не найдено</div>';
     };
-    input.addEventListener("input", draw);
-    draw();
+    input.addEventListener("input", () => { S.search = input.value.trim().toLowerCase(); draw(1); });
+    bindPager($("#res"), (p) => draw(p));
+    draw(1);
   }
 
   // ---- фильм ----
@@ -665,7 +704,7 @@
     replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>',
     vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.8 6a9 9 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     mute: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-    gear: '<svg viewBox="0 0 24 24"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8zm8.4 4.1l1.7-1.3-1.7-3-2 .8a7.6 7.6 0 0 0-1.6-1l-.3-2.1h-3.4l-.3 2.1a7.6 7.6 0 0 0-1.6 1l-2-.8-1.7 3 1.7 1.3a7.6 7.6 0 0 0 0 1.8l-1.7 1.3 1.7 3 2-.8c.5.4 1 .7 1.6 1l.3 2.1h3.4l.3-2.1c.6-.3 1.1-.6 1.6-1l2 .8 1.7-3-1.7-1.3c.1-.6.1-1.2 0-1.8z"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
     fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
     fsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
     pip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/></svg>',
@@ -741,7 +780,7 @@
             <span class="vp-grow"></span>
             <button class="vp-btn textual hidden" id="vpCc" aria-label="Субтитры" title="Субтитры (C)">CC</button>
             <button class="vp-btn textual" id="vpSpeed" aria-label="Скорость" title="Скорость"></button>
-            <button class="vp-btn" id="vpSet" aria-label="Настройки" title="Настройки">${ICON.gear}</button>
+            <button class="vp-btn stroke" id="vpSet" aria-label="Настройки" title="Настройки">${ICON.gear}</button>
             <button class="vp-btn hidden" id="vpPip" aria-label="Картинка в картинке" title="Картинка в картинке">${ICON.pip}</button>
             <button class="vp-btn" id="vpFs" aria-label="Полный экран" title="Полный экран (F)">${ICON.fs}</button>
           </div>
@@ -792,8 +831,7 @@
       t.track.oncuechange = () => drawCues();
       state.subTracks.push({ lang: s.lang, label: s.label, track: t.track });
     });
-    if (!subs.length) $("#vpCc").classList.add("hidden");
-    else $("#vpCc").classList.remove("hidden");
+    $("#vpCc").classList.remove("hidden");
     function setSub(lang) {
       state.curSub = lang;
       prefs.sub = lang; savePrefs();
@@ -893,7 +931,7 @@
         menu.innerHTML = [
           row("quality", "Качество", state.hls ? qualityLabel() : "Авто"),
           row("speed", "Скорость", video.playbackRate === 1 ? "Обычная" : video.playbackRate + "×"),
-          subs.length ? row("subs", "Субтитры", state.curSub === "off" ? "Выкл" : (state.subTracks.find((s) => s.lang === state.curSub) || {}).label || "Выкл") : "",
+          row("subs", "Субтитры", !state.subTracks.length ? "нет" : state.curSub === "off" ? "Выкл" : (state.subTracks.find((s) => s.lang === state.curSub) || {}).label || "Выкл"),
         ].join("");
       } else if (state.menuPage === "quality") {
         const auto = state.hls ? state.hls.autoLevelEnabled : true;
@@ -902,8 +940,9 @@
       } else if (state.menuPage === "speed") {
         menu.innerHTML = back("Скорость") + SPEEDS.map((s) => opt(`s:${s}`, s === 1 ? "Обычная" : s + "×", video.playbackRate === s)).join("");
       } else if (state.menuPage === "subs") {
-        menu.innerHTML = back("Субтитры") + opt("sub:off", "Выкл", state.curSub === "off") +
-          state.subTracks.map((s) => opt(`sub:${s.lang}`, s.label, state.curSub === s.lang)).join("");
+        menu.innerHTML = back("Субтитры") + (state.subTracks.length
+          ? opt("sub:off", "Выкл", state.curSub === "off") + state.subTracks.map((s) => opt(`sub:${s.lang}`, s.label, state.curSub === s.lang)).join("")
+          : '<div class="vp-mrow" style="color:var(--muted);white-space:normal">У этого фильма нет субтитров. Администратор может загрузить их в редактировании фильма.</div>');
       }
     }
     // клики по панели и меню не доходят до клика по видео: меню перерисовывается во время клика
@@ -929,9 +968,9 @@
     $("#vpSet").onclick = (e) => { e.stopPropagation(); state.menuPage ? closeMenu() : openMenu("main"); };
     $("#vpCc").onclick = (e) => {
       e.stopPropagation();
+      if (!state.subTracks.length) { toast("У этого фильма нет субтитров"); return; }
       if (state.curSub !== "off") return setSub("off");
-      const first = state.subTracks[0];
-      if (first) setSub(first.lang);
+      setSub(state.subTracks[0].lang);
     };
     $("#vpSpeed").onclick = (e) => {
       e.stopPropagation();
@@ -1225,6 +1264,10 @@
         <h2>Поддержать проект</h2>
         <p class="sub">Разовый донат, VIP не продлевается.</p>
         <div class="row">${S.config.donate.map((n) => payButton("donate", n, `${n} ★`, "btn ghost")).join("")}</div>
+      </div>
+      <div class="glass" style="margin-top:24px">
+        <h2>Скидки</h2>
+        <p class="sub" style="margin-bottom:0">Годовая подписка выгоднее месячной: ${p.vipYear} ★ вместо ${12 * p.vipMonth} ★ за 12 месяцев. Экономия ${12 * p.vipMonth - p.vipYear} ★ (${Math.round((1 - p.vipYear / (12 * p.vipMonth)) * 100)}%).</p>
       </div>
       ${S.me.vipActive && until ? `<p class="sub" style="margin-top:24px">Ваш VIP активен до ${esc(until)}</p>` : ""}`;
   }
