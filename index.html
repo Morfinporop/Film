@@ -799,9 +799,10 @@
 
   function buildPlayer(f, data, box) {
     const vertical = f.height > f.width && f.width > 0;
+    const posterUrl = f.hasPoster ? `/api/films/${f.id}/poster` : "";
     box.innerHTML = `
       <div class="vp ${vertical ? "vertical" : ""} loading" id="vp" tabindex="0" aria-label="Видеоплеер">
-        <video id="vid" playsinline preload="metadata"></video>
+        <video id="vid" playsinline preload="metadata"${posterUrl ? ` poster="${esc(posterUrl)}"` : ""}></video>
         <div class="vp-spin"></div>
         <div class="vp-flash" id="vpFlash"></div>
         <div class="vp-skip l" id="vpSkipL"></div>
@@ -847,6 +848,16 @@
     const state = { hls: null, levels: [], menuPage: null, dragging: false, hideT: null, clickT: null, flashT: null, lastSave: 0, subTracks: [], curSub: "off",
       ad: null, adTimes: null, adIdx: 0, adSkipT: null, resumeAt: data.resumeAt || 0 };
     const dur = () => (isFinite(video.duration) && video.duration > 0 ? video.duration : (f.duration || 0));
+
+    // медиа-сессия: на экране блокировки/в системных мини-плеерах тоже будет обложка фильма
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: f.title,
+          artwork: posterUrl ? [{ src: posterUrl, sizes: "512x512", type: "image/jpeg" }] : [],
+        });
+      } catch (_) {}
+    }
 
     // ---- источник ----
     const useHls = window.Hls && Hls.isSupported();
