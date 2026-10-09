@@ -1133,19 +1133,12 @@ class Api:
                 "role": role, "vip_until": row.get("vip_until")}
 
     def vip_active(self, user: dict | None) -> bool:
-        """Есть ли у пользователя доступ к VIP-контенту (включая служебный доступ персонала)."""
+        """Есть ли у пользователя доступ к VIP-контенту (включая служебный доступ персонала:
+        владелец и админы/редакторы считаются VIP всегда, даже без оплаченной подписки)."""
         if not user:
             return False
         if at_least(user["role"], ADMIN):
             return True
-        until = parse_dt(user.get("vip_until"))
-        return bool(until and until > utcnow())
-
-    def real_vip(self, user: dict | None) -> bool:
-        """Есть ли у пользователя настоящая оплаченная VIP-подписка (без учёта роли персонала).
-        Используется для показа рекламы: персонал должен видеть ролики, чтобы проверять их работу."""
-        if not user:
-            return False
         until = parse_dt(user.get("vip_until"))
         return bool(until and until > utcnow())
 
@@ -1155,6 +1148,11 @@ class Api:
     def film_json(self, user: dict | None, film: dict, detail: bool = False) -> dict:
         rating, reviews_n = self.db.rating(film["id"])
         locked = self.locked(user, film)
+        # у серии может не быть своей обложки — тогда берём обложку сериала
+        parent = self.db.get_film(film["series_id"]) if film["series_id"] else None
+        has_poster = bool(film["poster"] or film["photo_file_id"])
+        if not has_poster and parent:
+            has_poster = bool(parent["poster"] or parent["photo_file_id"])
         data = {
             "id": film["id"],
             "title": film["title"],
@@ -1169,7 +1167,7 @@ class Api:
             "width": film["width"],
             "height": film["height"],
             "status": film["status"],
-            "hasPoster": bool(film["poster"] or film["photo_file_id"]),
+            "hasPoster": has_poster,
             "rating": rating,
             "reviewCount": reviews_n,
             "country": film["country"],
@@ -1178,14 +1176,13 @@ class Api:
             "season": film["season"],
             "episode": film["episode"],
         }
-        if film["series_id"]:
-            parent = self.db.get_film(film["series_id"])
-            data["seriesTitle"] = parent["title"] if parent else ""
+        if parent:
+            data["seriesTitle"] = parent["title"]
         if film["kind"] == "series" and detail:
             data["episodes"] = [
                 {"id": e["id"], "season": e["season"], "episode": e["episode"], "title": e["title"],
                  "status": e["status"], "error": e["error"], "duration": e["duration"],
-                 "locked": self.locked(user, e), "hasPoster": bool(e["poster"])}
+                 "locked": self.locked(user, e), "hasPoster": bool(e["poster"] or film["poster"] or film["photo_file_id"])}
                 for e in self.db.episodes(film["id"])
             ]
         if film["kind"] == "link" and not locked:
@@ -1385,11 +1382,10 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         pos = float(watch.get("position") or 0)
         dur = float(watch.get("duration") or film["duration"] or 0)
         resume_at = pos if 5 < pos < dur - 15 else 0
-        # рекламу не показываем только настоящим платным VIP, а не всем, у кого есть
-        # служебный доступ к контенту (админ/владелец) — иначе персонал не сможет
-        # проверить, что ролики вообще работают
+        # реклама не показывается тем, у кого есть доступ к VIP-контенту: ни реальным платным
+        # подписчикам, ни персоналу (владелец, админы, редакторы) — у всех них vip_active() = True
         ads = []
-        if not api.real_vip(user) and dur >= 30:
+        if not api.vip_active(user) and dur >= 30:
             ads = [{"id": a["id"], "src": f"/api/ad/{a['id']}/video", "link": a["link"], "at": a["start_sec"]}
                    for a in db.list_ads()]
         token = make_media_token(api.secret, film["id"])
