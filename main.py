@@ -61,9 +61,9 @@ STATIC_DIR = BASE_DIR / "static"
 DEFAULT_OWNER_ID = 7745681987
 DEFAULT_BACKGROUND = "https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg"
 DONATE_OPTIONS = (50, 100, 250, 500)
-LADDER = (144, 240, 360, 480, 720, 1080)        # качества HLS: от 144p до 1080p
-BITRATE_KBPS = {144: 120, 240: 300, 360: 800, 480: 1400, 720: 2500, 1080: 5000}
-AUDIO_KBPS = {144: 64, 240: 64, 360: 96}
+LADDER = (144, 480, 720)                              # качества HLS: 144p, 480p, 720p (апскейл при низком исходнике)
+BITRATE_KBPS = {144: 120, 480: 1400, 720: 2500}
+AUDIO_KBPS = {144: 64}
 BOT_UPLOAD_LIMIT = 20 * 1024 * 1024             # лимит Bot API на скачивание файла (cloud API)
 UPLOAD_LIMIT = 2 * 1024 ** 3                    # максимум файла при загрузке через Mini App: 2 ГБ
 CHUNK_SIZE = 8 * 1024 * 1024                    # видео уходит частями: прокси не держит долгие запросы
@@ -212,7 +212,7 @@ TABLES = """
 CREATE TABLE IF NOT EXISTS films (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     title         TEXT    NOT NULL,
-    kind          TEXT    NOT NULL CHECK (kind IN ('link', 'video')),
+    kind          TEXT    NOT NULL CHECK (kind IN ('link', 'video', 'series')),
     url           TEXT,
     video_file_id TEXT,
     photo_file_id TEXT,
@@ -295,6 +295,9 @@ CREATE INDEX IF NOT EXISTS idx_sales_refund ON sales (refunded, id);
 
 # колонки, которых могло не быть в ранних версиях
 FILM_COLUMNS = {
+    "series_id": "INTEGER",
+    "season": "INTEGER NOT NULL DEFAULT 0",
+    "episode": "INTEGER NOT NULL DEFAULT 0",
     "owner_id": "INTEGER",
     "description": "TEXT NOT NULL DEFAULT ''",
     "release_date": "TEXT NOT NULL DEFAULT ''",
@@ -344,7 +347,7 @@ class Database:
             self.conn.execute(f"ALTER TABLE payments RENAME TO payments_legacy_{stamp}")
         # 2. старая films с CHECK на video_file_id не даёт загружать фильмы через Mini App — пересоздаём
         old_films_sql = self._table_sql("films")
-        if old_films_sql and "video_file_id IS NOT NULL" in old_films_sql:
+        if old_films_sql and ("video_file_id IS NOT NULL" in old_films_sql or "kind IN ('link', 'video')" in old_films_sql):
             old_cols = self._columns("films")
             self.conn.execute("DROP INDEX IF EXISTS idx_films_active")
             self.conn.execute(f"ALTER TABLE films RENAME TO films_old_{stamp}")
@@ -469,7 +472,7 @@ class Database:
         self.conn.execute("VACUUM")
 
     def list_films(self, *, public: bool = True, owner_id: int | None = None, limit: int = 500) -> list[dict]:
-        where, params = [], []
+        where, params = ["series_id IS NULL"], []
         if public:
             where.append("is_active = 1 AND status = 'ready'")
         if owner_id is not None:
@@ -477,6 +480,13 @@ class Database:
             params.append(owner_id)
         clause = (" WHERE " + " AND ".join(where)) if where else ""
         return self._all(f"SELECT * FROM films{clause} ORDER BY id DESC LIMIT ?", (*params, limit))
+
+    def episodes(self, series_id: int) -> list[dict]:
+        return self._all("SELECT * FROM films WHERE series_id = ? ORDER BY season, episode, id", (series_id,))
+
+    def episode_exists(self, series_id: int, season: int, episode: int) -> bool:
+        return self._one("SELECT id FROM films WHERE series_id = ? AND season = ? AND episode = ?",
+                         (series_id, season, episode)) is not None
 
     def list_video_films(self) -> list[dict]:
         return self._all("SELECT * FROM films WHERE kind = 'video' ORDER BY id")
@@ -622,15 +632,6 @@ async def _run(args: list[str]) -> bytes:
     return err
 
 
-async def subtitle_streams(src: Path) -> list[str]:
-    """Коды языков встроенных текстовых субтитров по порядку (0:s:0, 0:s:1...)."""
-    err = (await _run(["-hide_banner", "-i", str(src)])).decode(errors="replace")
-    langs = []
-    for m in re.finditer(r"Stream #0:\d+(?:\((\w+)\))?.*?: Subtitle: (\w+)", err):
-        langs.append((m.group(1) or "und").lower() if m.group(2) not in ("hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle") else "")
-    return langs
-
-
 ISO3 = {"rus": "ru", "eng": "en", "ukr": "uk", "deu": "de", "ger": "de", "fra": "fr", "fre": "fr",
         "spa": "es", "ita": "it", "tur": "tr", "jpn": "ja", "kor": "ko", "zho": "zh", "chi": "zh"}
 
@@ -640,22 +641,13 @@ def sub_name(lang: str) -> str:
     return ISO3.get(code, code) or "und"
 
 
-async def extract_subtitles(src: Path, out_dir: Path) -> None:
-    """Извлекает встроенные текстовые субтитры в WebVTT. Растровые (PGS/DVD) пропускаются."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for k, lang in enumerate(await subtitle_streams(src)):
-        if not lang:
-            continue
-        name = sub_name(lang)
-        target = out_dir / f"{name}.vtt"
-        n = 2
-        while target.exists():  # несколько дорожек одного языка
-            target = out_dir / f"{name}{n}.vtt"
-            n += 1
-        await _run(["-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
-                    "-map", f"0:s:{k}", "-c:s", "webvtt", str(target)])
-        if not target.exists() or target.stat().st_size == 0:
-            target.unlink(missing_ok=True)
+def hls_ready(folder: Path) -> bool:
+    """Готово ли видео в нужном наборе качеств (LADDER) и все плейлисты на месте."""
+    master = folder / "master.m3u8"
+    if not master.exists():
+        return False
+    names = re.findall(r'NAME="(\d+p)"', master.read_text(encoding="utf-8", errors="replace"))
+    return sorted(names) == sorted(f"{h}p" for h in LADDER) and all((folder / n / "index.m3u8").exists() for n in names)
 
 
 def convert_subtitle(src: Path, dest: Path) -> None:
@@ -758,7 +750,6 @@ class Transcoder:
             raise RuntimeError("Файл не распознан как видео")
 
         ladder = list(LADDER)  # всегда весь набор 144p-1080p; для низкого исходника качество увеличивается
-        await extract_subtitles(src, folder / "subs")
         # новые качества собираются в отдельной папке и заменяют старые только после успеха,
         # поэтому при переобработке (например, после обновления бота) не остаётся мусора
         build = folder / ".build"
@@ -1003,7 +994,7 @@ def build_router(cfg: Config, db: Database, transcoder: Transcoder) -> Router:
         )
         transcoder.enqueue(film_id)
         await message.answer(
-            f"Фильм #{film_id} принят и обрабатывается в качестве 360p, 720p, 1080p. "
+            f"Фильм #{film_id} принят и обрабатывается в качестве 144p, 480p, 720p. "
             "Заполните описание и обложку в Админ-панели.",
             reply_markup=webapp_kb(f"{cfg.webapp_url}#admin/film/{film_id}") if cfg.webapp_url else None,
         )
@@ -1134,7 +1125,20 @@ class Api:
             "reviewCount": reviews_n,
             "country": film["country"],
             "isMine": bool(user and film.get("owner_id") == user["id"]),
+            "seriesId": film["series_id"],
+            "season": film["season"],
+            "episode": film["episode"],
         }
+        if film["series_id"]:
+            parent = self.db.get_film(film["series_id"])
+            data["seriesTitle"] = parent["title"] if parent else ""
+        if film["kind"] == "series" and detail:
+            data["episodes"] = [
+                {"id": e["id"], "season": e["season"], "episode": e["episode"], "title": e["title"],
+                 "status": e["status"], "error": e["error"], "duration": e["duration"],
+                 "locked": self.locked(user, e), "hasPoster": bool(e["poster"])}
+                for e in self.db.episodes(film["id"])
+            ]
         if film["kind"] == "link" and not locked:
             data["url"] = film["url"]
         if detail:
@@ -1293,6 +1297,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         film = _film_or_none(request)
         if not film:
             return web.Response(status=404)
+        if not film["poster"] and film["series_id"]:
+            film = db.get_film(film["series_id"]) or film
         if film["poster"] and Path(film["poster"]).exists():
             return web.FileResponse(film["poster"], headers={"Cache-Control": "public, max-age=3600"})
         if film["photo_file_id"]:
@@ -1311,6 +1317,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         film = _film_or_none(request)
         if not film:
             return _err("not_found", 404)
+        if film["kind"] == "series":
+            return _err("not_playable", 400)
         if film["kind"] == "video" and film["status"] != "ready":
             return _err("processing", 202)
         user = api.user_of(request)
@@ -1419,7 +1427,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             return bad
         owner = None if at_least(user["role"], ADMIN) else user["id"]
         rows = db.list_films(public=False, owner_id=owner)
-        return _json([{**api.film_json(user, f), "error": f["error"], "isActive": bool(f["is_active"]),
+        return _json([{**api.film_json(user, f, detail=True), "error": f["error"], "isActive": bool(f["is_active"]),
                        "subtitles": list_subtitles(media_root / str(f["id"])) if f["kind"] == "video" else []}
                       for f in rows])
 
@@ -1490,6 +1498,24 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                     return _err("upload_incomplete", 400)
             if kind not in ("video", "link"):
                 return _err("bad_kind", 400)
+            series = None
+            season = episode = 0
+            series_raw = fields.get("seriesId", "")
+            if series_raw:
+                series = _managed(user, int(series_raw)) if series_raw.isdigit() else None
+                if not series or series["kind"] != "series":
+                    return _err("not_found", 404)
+                if kind != "video":
+                    return _err("bad_kind", 400)
+                try:
+                    season = int(fields.get("season", "1"))
+                    episode = int(fields.get("episode", "1"))
+                except ValueError:
+                    return _err("bad_request", 400)
+                if not (1 <= season <= 99 and 1 <= episode <= 999):
+                    return _err("bad_request", 400)
+                if db.episode_exists(series["id"], season, episode):
+                    return _err("episode_exists", 400)
             film_id = db.create_film(
                 title=title,
                 kind=kind,
@@ -1501,7 +1527,13 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                 country=fields.get("country", "")[:80],
                 is_vip=1 if fields.get("isVip") in ("1", "true", "on") else 0,
                 status="ready" if kind == "link" else "processing",
+                series_id=series["id"] if series else None,
+                season=season,
+                episode=episode,
             )
+            if series:  # серия наследует VIP, автора, страну и дату сериала
+                db.update_film(film_id, is_vip=series["is_vip"], creator=series["creator"],
+                               country=series["country"], release_date=series["release_date"])
             folder = media_root / str(film_id)
             folder.mkdir(parents=True, exist_ok=True)
             if upload_item:
@@ -1553,6 +1585,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         if "isActive" in body:
             fields["is_active"] = 1 if body["isActive"] else 0
         db.update_film(film["id"], **fields)
+        if film["kind"] == "series" and "is_vip" in fields:
+            db.conn.execute("UPDATE films SET is_vip = ? WHERE series_id = ?", (fields["is_vip"], film["id"]))
         return _json(api.film_json(user, db.get_film(film["id"])))
 
     async def admin_poster(request: web.Request) -> web.Response:
@@ -1604,9 +1638,33 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         film = _managed(user, int(request.match_info["id"]))
         if not film:
             return _err("not_found", 404)
+        for ep in db.episodes(film["id"]) if film["kind"] == "series" else []:
+            db.delete_film(ep["id"])
+            shutil.rmtree(media_root / str(ep["id"]), ignore_errors=True)
         db.delete_film(film["id"])
         shutil.rmtree(media_root / str(film["id"]), ignore_errors=True)
         return _json({"ok": True})
+
+    async def admin_series_create(request: web.Request) -> web.Response:
+        user, bad = staff_user(request, EDITOR)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return _err("bad_request", 400)
+        title = str(body.get("title", "")).strip()[:120]
+        if not title:
+            return _err("title_required", 400)
+        film_id = db.create_film(
+            title=title, kind="series", owner_id=user["id"], status="ready",
+            description=str(body.get("description", ""))[:4000],
+            release_date=str(body.get("releaseDate", ""))[:10],
+            creator=str(body.get("creator", ""))[:120],
+            country=str(body.get("country", ""))[:80],
+            is_vip=1 if body.get("isVip") else 0,
+        )
+        return _json(api.film_json(user, db.get_film(film_id), detail=True), 201)
 
     async def admin_reprocess(request: web.Request) -> web.Response:
         user, bad = staff_user(request, EDITOR)
@@ -1862,6 +1920,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("POST", "/api/admin/films/{id}/update", admin_update),
         ("POST", "/api/admin/films/{id}/poster", admin_poster),
         ("POST", "/api/admin/films/{id}/delete", admin_delete),
+        ("POST", "/api/admin/series", admin_series_create),
         ("POST", "/api/admin/films/{id}/reprocess", admin_reprocess),
         ("POST", "/api/admin/films/{id}/subtitles", admin_subtitle_add),
         ("POST", "/api/admin/films/{id}/subtitles/{lang}/delete", admin_subtitle_delete),
@@ -1906,10 +1965,13 @@ async def main() -> None:
 
     # видео, которые не обработаны (после обновления или сбоя), ставим в очередь заново
     for film in db.list_video_films():
-        ready_file = cfg.media_dir / str(film["id"]) / "master.m3u8"
-        if film["status"] != "ready" or not ready_file.exists():
+        folder = cfg.media_dir / str(film["id"])
+        if film["status"] != "ready" or not (folder / "master.m3u8").exists():
             if film["status"] != "failed" or film["video_file_id"]:
                 transcoder.enqueue(film["id"])
+        elif not hls_ready(folder) and (folder / "source.mp4").exists():
+            # старый набор качеств: пересобираем из исходника, старое видео играет до замены
+            transcoder.queue.put_nowait(film["id"])
     transcoder.start()
     storage_task = asyncio.create_task(storage_loop(db, cfg.media_dir))
 

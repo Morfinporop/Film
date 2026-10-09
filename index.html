@@ -248,7 +248,20 @@
   .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
   .modal-head b { font-size: 17px; font-weight: 600; }
   .modal-body { padding: 6px 20px 20px; overflow-y: auto; }
-  .hist-row { cursor: pointer; }
+  .hist-card { position: relative; display: flex; align-items: flex-end; min-height: 120px; margin-bottom: 12px; border-radius: 20px;
+    overflow: hidden; isolation: isolate; border: 1px solid var(--line); background: var(--field); color: var(--text); text-decoration: none; }
+  .hist-card::before { content: ""; position: absolute; inset: -24px; z-index: -1; background: var(--poster, none) center / cover no-repeat;
+    filter: blur(16px) brightness(.5); }
+  .hist-info { padding: 16px 18px; display: grid; gap: 4px; min-width: 0; }
+  .hist-info b { font-size: 17px; font-weight: 600; }
+  .hist-info span { color: #d4d4d8; font-size: 13px; }
+  .ep-list { padding: 6px 0; }
+  .ep-row { display: flex; align-items: center; gap: 12px; padding: 12px 18px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .ep-row:last-child { border-bottom: 0; }
+  .ep-row.on { background: var(--field); }
+  .ep-num { min-width: 28px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ep-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ep-lock { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
   .hist-row .more { color: var(--text); text-decoration: underline; }
   .hist-row .info div { color: var(--muted); font-size: 13px; margin-top: 4px; }
   .hist-row .info p { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
@@ -256,7 +269,7 @@
   .vp-btn svg { width: 22px; height: 22px; fill: currentColor; }
   .vp-btn.stroke svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .vp-btn.textual { width: auto; border-radius: 10px; padding: 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
-  .vp-btn.textual.on { background: #fff; color: #000; }
+  .vp-btn.textual.on, .vp-btn.stroke.on { background: #fff; color: #000; }
   .vp-vol { position: relative; display: flex; align-items: center; }
   .vp-vslider {
     position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 4px;
@@ -522,6 +535,22 @@
     </a>`;
   }
 
+  // сезоны и серии сериала: по сезонам, текущая серия выделена
+  function seasonsHtml(eps, currentId) {
+    if (!eps.length) return '<div class="sub" style="margin:0">Серий пока нет</div>';
+    const seasons = {};
+    eps.forEach((e) => { (seasons[e.season] = seasons[e.season] || []).push(e); });
+    return Object.keys(seasons).map(Number).sort((a, b) => a - b).map((sn) => `
+      <h2 style="margin-top:18px">Сезон ${sn}</h2>
+      <div class="glass ep-list">${seasons[sn].sort((a, b) => a.episode - b.episode).map((e) => `
+        <a class="ep-row ${e.id === currentId ? "on" : ""}" href="#/film/${e.id}">
+          <span class="ep-num">${e.episode}</span>
+          <span class="ep-title">${esc(e.title)}</span>
+          ${e.locked ? '<span class="ep-lock">VIP</span>' : ""}
+          ${e.status !== "ready" ? '<span class="ep-lock">обработка</span>' : ""}
+        </a>`).join("")}</div>`).join("");
+  }
+
   const PER_PAGE = 6;
   const arrowSvg = (dir) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${dir < 0 ? '<path d="M15 6l-6 6 6 6"/>' : '<path d="M9 6l6 6-6 6"/>'}</svg>`;
   // список с пагинацией: 6 фильмов на страницу, внизу ← 1/20 →
@@ -554,7 +583,7 @@
     };
     app.innerHTML = `
       <h1>Фильмы</h1>
-      <p class="sub">Смотрите фильмы и сериалы. Качество от 144p до 1080p, скорость и субтитры.</p>
+      <p class="sub">Смотрите фильмы и сериалы, в отличном качестве!</p>
       <div id="list"></div>`;
     draw(S.catalogPage || 1);
     bindPager($("#list"), (p) => { draw(p); });
@@ -633,6 +662,12 @@
     const canWrite = !S.me.guest && !f.locked;
     const desc = f.description || "";
     const longDesc = desc.length > 220;
+    const isSeries = f.kind === "series";
+    let episodeNav = "";
+    if (f.seriesId) {
+      const parent = await call(`/api/films/${f.seriesId}`).catch(() => null);
+      if (parent && parent.episodes) episodeNav = `<section class="section"><h2>${esc(parent.title)}</h2>${seasonsHtml(parent.episodes, f.id)}</section>`;
+    }
 
     app.innerHTML = `
       <section class="hero" style="--poster: url('${poster}')">
@@ -654,7 +689,8 @@
         </div>
       </section>
 
-      <section class="section"><div id="player"></div></section>
+      ${isSeries ? `<section class="section">${seasonsHtml(f.episodes || [], null)}</section>` : `<section class="section"><div id="player"></div></section>`}
+      ${episodeNav}
 
       <section class="section">
         <h2>Описание</h2>
@@ -670,16 +706,18 @@
             ${canWrite ? '<button class="btn small" id="leaveReview">Оставить отзыв</button>' : ""}
           </div>
         </div>
-        <div class="glass">${preview || '<div class="sub" style="margin:0">Отзывов пока нет</div>'}</div>
       </section>`;
 
-    await mountFilmPlayer(f);
+    if (!isSeries) await mountFilmPlayer(f);
     bindFilm(f);
   }
 
   function bindFilm(f) {
     const more = $("#descMore");
-    if (more) more.onclick = () => { $("#desc").classList.remove("clamp"); more.remove(); };
+    if (more) more.onclick = () => {
+      const nowClamped = $("#desc").classList.toggle("clamp");
+      more.textContent = nowClamped ? "Читать дальше" : "Скрыть";
+    };
     $("#allReviews").onclick = () => {
       const all = f.reviews.length
         ? f.reviews.map(reviewItem).join("")
@@ -709,11 +747,11 @@
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
     fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
     fsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
-    pip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/></svg>',
+    pip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><rect x="12" y="11" width="7" height="5" rx="1"/></svg>',
     back: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
     right: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
     tick: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
-    cc: '<svg viewBox="0 0 24 24"><path d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3.5 8.2c1.6 0 2.5-1 2.5-2.5v-.4h-1.2v.4c0 .8-.5 1.3-1.3 1.3s-1.3-.6-1.3-1.5v-1c0-.9.6-1.5 1.3-1.5s1.2.5 1.2 1.2h1.2c0-1.4-1-2.4-2.4-2.4-1.5 0-2.5 1.1-2.5 2.7v1c0 1.6 1 2.8 2.5 2.8zm8 0c1.6 0 2.5-1 2.5-2.5v-.4h-1.2v.4c0 .8-.5 1.3-1.3 1.3s-1.3-.6-1.3-1.5v-1c0-.9.6-1.5 1.3-1.5s1.2.5 1.2 1.2h1.2c0-1.4-1-2.4-2.4-2.4-1.5 0-2.5 1.1-2.5 2.7v1c0 1.6 1 2.8 2.5 2.8z"/></svg>',
+    cc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M10.2 10.1a2.6 2.6 0 1 0 0 3.8"/><path d="M16.8 10.1a2.6 2.6 0 1 0 0 3.8"/></svg>',
   };
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -780,10 +818,10 @@
             </div>
             <span class="vp-time" id="vpTime">0:00 / 0:00</span>
             <span class="vp-grow"></span>
-            <button class="vp-btn textual hidden" id="vpCc" aria-label="Субтитры" title="Субтитры (C)">CC</button>
+            <button class="vp-btn stroke hidden" id="vpCc" aria-label="Субтитры" title="Субтитры (C)">${ICON.cc}</button>
             <button class="vp-btn textual" id="vpSpeed" aria-label="Скорость" title="Скорость"></button>
             <button class="vp-btn stroke" id="vpSet" aria-label="Настройки" title="Настройки">${ICON.gear}</button>
-            <button class="vp-btn hidden" id="vpPip" aria-label="Картинка в картинке" title="Картинка в картинке">${ICON.pip}</button>
+            <button class="vp-btn stroke hidden" id="vpPip" aria-label="Картинка в картинке" title="Картинка в картинке">${ICON.pip}</button>
             <button class="vp-btn" id="vpFs" aria-label="Полный экран" title="Полный экран (F)">${ICON.fs}</button>
           </div>
         </div>
@@ -833,7 +871,8 @@
       t.track.oncuechange = () => drawCues();
       state.subTracks.push({ lang: s.lang, label: s.label, track: t.track });
     });
-    $("#vpCc").classList.remove("hidden");
+    if (!subs.length) $("#vpCc").classList.add("hidden");
+    else $("#vpCc").classList.remove("hidden");
     function setSub(lang) {
       state.curSub = lang;
       prefs.sub = lang; savePrefs();
@@ -933,7 +972,7 @@
         menu.innerHTML = [
           row("quality", "Качество", state.hls ? qualityLabel() : "Авто"),
           row("speed", "Скорость", video.playbackRate === 1 ? "Обычная" : video.playbackRate + "×"),
-          row("subs", "Субтитры", !state.subTracks.length ? "нет" : state.curSub === "off" ? "Выкл" : (state.subTracks.find((s) => s.lang === state.curSub) || {}).label || "Выкл"),
+          subs.length ? row("subs", "Субтитры", state.curSub === "off" ? "Выкл" : (state.subTracks.find((s) => s.lang === state.curSub) || {}).label || "Выкл") : "",
         ].join("");
       } else if (state.menuPage === "quality") {
         const auto = state.hls ? state.hls.autoLevelEnabled : true;
@@ -1247,7 +1286,7 @@
     const until = S.me.vipUntil ? fmtDate(S.me.vipUntil) : "";
     app.innerHTML = `
       <h1>VIP</h1>
-      <p class="sub">VIP открывает фильмы, помеченные как «Для VIP». Оплата звёздами Telegram.</p>
+      <p class="sub">VIP открывает фильмы без рекламы, качество на высоте, кучу новых фильмов в закрытом доступе!</p>
       <div class="plans">
         <div class="plan">
           <div>Месяц</div>
@@ -1266,10 +1305,6 @@
         <h2>Поддержать проект</h2>
         <p class="sub">Разовый донат, VIP не продлевается.</p>
         <div class="row">${S.config.donate.map((n) => payButton("donate", n, `${n} ★`, "btn ghost")).join("")}</div>
-      </div>
-      <div class="glass" style="margin-top:24px">
-        <h2>Скидки</h2>
-        <p class="sub" style="margin-bottom:0">Годовая подписка выгоднее месячной: ${p.vipYear} ★ вместо ${12 * p.vipMonth} ★ за 12 месяцев. Экономия ${12 * p.vipMonth - p.vipYear} ★ (${Math.round((1 - p.vipYear / (12 * p.vipMonth)) * 100)}%).</p>
       </div>
       ${S.me.vipActive && until ? `<p class="sub" style="margin-top:24px">Ваш VIP активен до ${esc(until)}</p>` : ""}`;
   }
@@ -1290,16 +1325,12 @@
       </section>`;
     const rows = await call("/api/me/history").catch(() => []);
     if (S.route !== "profile") return;
-    const short = (t, n) => (t.length > n ? t.slice(0, n).trim() + "…" : t);
     $("#history").innerHTML = rows.length
-      ? rows.map((f) => `<a class="list-row hist-row" href="#/film/${f.id}">
-          <div class="thumb">${f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="" loading="lazy" onerror="this.remove()">` : ""}</div>
-          <div class="info">
+      ? rows.map((f) => `<a class="hist-card" href="#/film/${f.id}" style="${f.hasPoster ? `--poster: url('/api/films/${f.id}/poster')` : ""}">
+          <div class="hist-info">
             <b>${esc(f.title)}</b>
-            ${f.description ? `<p>${esc(short(f.description, 90))} <span class="more">Читать дальше</span></p>` : ""}
-            <div>Дата выхода: ${esc(fmtRelease(f.releaseDate))}</div>
-            <div>Автор: ${esc(f.creator || "не указан")}</div>
-            <div>Страна: ${esc(f.country || "не указана")}</div>
+            <span>Дата выхода: ${esc(fmtRelease(f.releaseDate))}</span>
+            <span>Длительность: ${f.duration ? esc(fmtClock(f.duration)) : "не указана"}</span>
           </div></a>`).join("")
       : '<div class="sub" style="margin:0">Вы пока ничего не смотрели</div>';
   }
@@ -1310,7 +1341,7 @@
     const tabs = [["films", "Фильмы"], ["upload", "Загрузить"]];
     if (S.me.canManage) tabs.push(["ads", "Реклама"], ["users", "Пользователи"]);
     if (S.me.isOwner) tabs.push(["sales", "Продажи"]);
-    app.innerHTML = `<h1>Админ-панель</h1><p class="sub">Видео загружаются здесь, размер файла до 2 ГБ.</p>
+    app.innerHTML = `<h1>Админ-панель</h1>
       <div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${t}</button>`).join("")}</div>
       <div id="admin"></div>`;
     app.onclick = (e) => {
@@ -1364,6 +1395,65 @@
     }
   }
 
+  // редактор серий сериала: список по сезонам, удаление и добавление серии
+  function seriesEditor(f) {
+    const eps = f.episodes || [];
+    const seasons = {};
+    eps.forEach((e) => { (seasons[e.season] = seasons[e.season] || []).push(e); });
+    const seasonNums = Object.keys(seasons).map(Number).sort((a, b) => a - b);
+    const lastSeason = seasonNums.length ? seasonNums[seasonNums.length - 1] : 1;
+    const lastEp = eps.filter((e) => e.season === lastSeason).reduce((m, e) => Math.max(m, e.episode), 0);
+    const list = seasonNums.length ? seasonNums.map((sn) => `<h2 style="margin-top:18px">Сезон ${sn}</h2>` +
+      seasons[sn].sort((a, b) => a.episode - b.episode).map((e) => `<div class="list-row">
+        <div class="info"><b>Серия ${e.episode}${e.title ? " · " + esc(e.title) : ""}</b>
+        <small>${e.status === "ready" ? "готово" : e.status === "processing" ? "обработка" : "ошибка"}</small></div>
+        <button class="btn ghost small" data-epdel="${e.id}">Удалить</button></div>`).join("")).join("")
+      : '<p class="hint">Серий пока нет.</p>';
+    return `<h2 style="margin-top:22px">Серии</h2>${list}
+      <h2 style="margin-top:22px">Добавить серию</h2>
+      <div class="row">
+        <label class="field" style="flex:1"><span>Сезон</span><input type="number" id="ep-season" min="1" max="99" value="${lastSeason}"></label>
+        <label class="field" style="flex:1"><span>Серия</span><input type="number" id="ep-number" min="1" max="999" value="${lastEp + 1}"></label>
+      </div>
+      <label class="field"><span>Название серии (необязательно)</span><input type="text" id="ep-title" maxlength="120"></label>
+      <label class="field"><span>Видеофайл</span><input type="file" id="ep-file" accept="video/*"></label>
+      <div class="progress" id="ep-progress"><div></div></div>
+      <button class="btn small" data-epadd="${f.id}">Добавить серию</button>`;
+  }
+
+  document.addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-epdel]");
+    if (del) {
+      if (!confirm("Удалить серию?")) return;
+      await call(`/api/admin/films/${del.dataset.epdel}/delete`, { body: {} }).catch(() => null);
+      toast("Серия удалена");
+      if (S.route === "admin") render(); // перерисовать редактор сериала
+      return;
+    }
+    const add = e.target.closest("[data-epadd]");
+    if (!add) return;
+    const seriesId = add.dataset.epadd;
+    const file = $("#ep-file").files[0];
+    if (!file) { toast("Выберите видеофайл серии"); return; }
+    if (file.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
+    const season = Number($("#ep-season").value), episode = Number($("#ep-number").value);
+    if (!season || !episode) { toast("Укажите сезон и номер серии"); return; }
+    add.disabled = true;
+    try {
+      const uid = await uploadVideoChunked(file, $("#ep-progress"));
+      const fd = new FormData();
+      fd.append("kind", "video");
+      fd.append("seriesId", seriesId);
+      fd.append("season", String(season));
+      fd.append("episode", String(episode));
+      fd.append("title", $("#ep-title").value.trim() || `Серия ${episode}`);
+      fd.append("uploadId", uid);
+      await upload("/api/admin/films", fd, null);
+      toast("Серия добавлена, идёт обработка");
+      go(`#/admin/film/${seriesId}`);
+    } catch (_) { add.disabled = false; }
+  });
+
   function editForm(f) {
     const subs = (f.subtitles || []);
     const subChips = subs.length
@@ -1393,6 +1483,7 @@
       <label class="check"><input type="checkbox" id="e-vip" ${f.isVip ? "checked" : ""}> Фильм только для VIP</label>
       <label class="check" style="margin-top:10px"><input type="checkbox" id="e-active" ${f.isActive ? "checked" : ""}> Показывать в каталоге</label>
       ${subForm}
+      ${f.kind === "series" ? seriesEditor(f) : ""}
       <div class="row" style="margin-top:20px">
         <button class="btn" data-save="${f.id}">Сохранить</button>
         <button class="btn ghost" onclick="location.hash='#/admin'">Закрыть</button>
@@ -1487,10 +1578,10 @@
   function adminUpload() {
     $("#admin").innerHTML = `<div class="glass">
       <label class="field"><span>Тип</span>
-        <select id="u-kind"><option value="video">Загрузить видео</option><option value="link">Ссылка (TikTok, YouTube)</option></select></label>
+        <select id="u-kind"><option value="video">Загрузить видео</option><option value="link">Ссылка (TikTok, YouTube)</option><option value="series">Сериал (карточка, серии добавляются потом)</option></select></label>
       <div id="u-video">
         <label class="field"><span>Видеофайл</span><input type="file" id="u-file" accept="video/*"></label>
-        <p class="hint">Максимум 2 ГБ. Видео переводится в 144p, 240p, 360p, 480p, 720p и 1080p. Субтитры добавляются после загрузки.</p>
+        <p class="hint">Максимум 2 ГБ. Видео переводится в 144p, 480p и 720p. Субтитры добавляются после загрузки.</p>
       </div>
       <div id="u-link" class="hidden"><label class="field"><span>Ссылка</span><input type="url" id="u-url" placeholder="https://"></label></div>
       <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
@@ -1507,8 +1598,25 @@
     kind.onchange = () => {
       $("#u-video").classList.toggle("hidden", kind.value !== "video");
       $("#u-link").classList.toggle("hidden", kind.value !== "link");
+      $("#u-poster").closest("label").classList.toggle("hidden", false);
     };
     $("#u-send").onclick = async () => {
+      if (kind.value === "series") {
+        const title = $("#u-title").value.trim();
+        if (!title) { toast("Введите название сериала"); return; }
+        $("#u-send").disabled = true;
+        try {
+          const series = await call("/api/admin/series", { body: {
+            title, description: $("#u-desc").value, releaseDate: $("#u-date").value,
+            creator: $("#u-creator").value, country: $("#u-country").value, isVip: $("#u-vip").checked,
+          } });
+          const p = $("#u-poster").files[0];
+          if (p) await uploadPoster(series.id, p).catch(() => null);
+          toast("Сериал создан. Теперь добавьте серии");
+          go(`#/admin/film/${series.id}`);
+        } catch (_) { $("#u-send").disabled = false; }
+        return;
+      }
       const fd = new FormData();
       fd.append("kind", kind.value);
       fd.append("title", $("#u-title").value.trim());
