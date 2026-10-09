@@ -90,6 +90,10 @@
   .hint { color: var(--muted); font-size: 13px; line-height: 1.5; margin: -6px 0 14px; }
 
   /* ---- сетка фильмов ---- */
+  input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; cursor: pointer;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E") center / contain no-repeat; }
+  #player { margin: 0 -20px; }
+  #player .vp { border-radius: 0; }
   .search-idle { min-height: 40vh; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--muted); padding: 0; }
   .pager { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 32px 0 8px; }
   .pg-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; padding: 0;
@@ -238,6 +242,7 @@
   .gold { color: var(--gold); letter-spacing: 2px; }
   .ava { position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: none;
     background: var(--field); border: 1px solid var(--line); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--text); }
+  .ava-lg { width: 84px; height: 84px; font-size: 30px; border-radius: 50%; }
   .ava img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .linkbtn { background: none; border: 0; color: var(--text); text-decoration: underline; padding: 10px 0 0; font-size: 14px; cursor: pointer; }
@@ -248,13 +253,13 @@
   .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
   .modal-head b { font-size: 17px; font-weight: 600; }
   .modal-body { padding: 6px 20px 20px; overflow-y: auto; }
-  .hist-card { position: relative; display: flex; align-items: flex-end; min-height: 120px; margin-bottom: 12px; border-radius: 20px;
-    overflow: hidden; isolation: isolate; border: 1px solid var(--line); background: var(--field); color: var(--text); text-decoration: none; }
-  .hist-card::before { content: ""; position: absolute; inset: -24px; z-index: -1; background: var(--poster, none) center / cover no-repeat;
-    filter: blur(16px) brightness(.5); }
-  .hist-info { padding: 16px 18px; display: grid; gap: 4px; min-width: 0; }
-  .hist-info b { font-size: 17px; font-weight: 600; }
-  .hist-info span { color: #d4d4d8; font-size: 13px; }
+  .hist-card { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; padding: 10px; border-radius: 16px;
+    border: 1px solid var(--line); background: rgba(0,0,0,.5); color: var(--text); text-decoration: none; }
+  .hist-cover { width: 56px; height: 80px; flex: none; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,.06); }
+  .hist-cover img { width: 100%; height: 100%; object-fit: cover; }
+  .hist-info { display: grid; gap: 4px; min-width: 0; }
+  .hist-info b { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-info span { color: var(--muted); font-size: 13px; }
   .ep-list { padding: 6px 0; }
   .ep-row { display: flex; align-items: center; gap: 12px; padding: 12px 18px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
   .ep-row:last-child { border-bottom: 0; }
@@ -276,7 +281,7 @@
     width: 40px; height: 128px; border-radius: 14px; background: rgba(0,0,0,.6); border: 1px solid var(--line);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: none;
   }
-  .vp-vol:hover .vp-vslider, .vp-vol:focus-within .vp-vslider { display: block; }
+  .vp-vol:hover .vp-vslider { display: block; }
   .vp.fs .vp-vslider { display: none !important; }
   .vp-vslider input[type=range] {
     position: absolute; left: 50%; top: 50%; width: 104px; height: 20px; margin: 0;
@@ -351,7 +356,7 @@
   .plan small { color: var(--muted); font-size: 13px; line-height: 1.5; }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 13px; }
-  .chip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(239,68,68,.2); color: #fca5a5; font-size: 13px; line-height: 1; padding: 0; }
+  .chip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font-size: 13px; line-height: 1; padding: 0; }
   @media (max-width: 480px) {
     .plans { grid-template-columns: 1fr; }
     .hero-inner { grid-template-columns: 116px 1fr; gap: 14px; }
@@ -658,7 +663,7 @@
     S.filmId = id;
     if (!f) { app.innerHTML = '<div class="empty">Фильм не найден</div>'; return; }
     const poster = f.hasPoster ? `/api/films/${f.id}/poster` : "";
-    const preview = f.reviews.slice(0, 3).map(reviewItem).join("");
+    const preview = (f.featured || []).map(reviewItem).join("");
     const canWrite = !S.me.guest && !f.locked;
     const desc = f.description || "";
     const longDesc = desc.length > 220;
@@ -706,6 +711,7 @@
             ${canWrite ? '<button class="btn small" id="leaveReview">Оставить отзыв</button>' : ""}
           </div>
         </div>
+        ${preview ? `<div class="featured">${preview}</div>` : ""}
       </section>`;
 
     if (!isSeries) await mountFilmPlayer(f);
@@ -741,7 +747,7 @@
   const ICON = {
     play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
     pause: '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg>',
-    replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>',
+    replay: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>',
     vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.8 6a9 9 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     mute: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -837,7 +843,7 @@
     // ---- источник ----
     const useHls = window.Hls && Hls.isSupported();
     if (useHls) {
-      const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60, capLevelToPlayerSize: false, startLevel: -1 });
+      const hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60, capLevelToPlayerSize: false, startLevel: -1, abrEwmaDefaultEstimate: 8e6 });
       state.hls = hls;
       hls.loadSource(data.src);
       hls.attachMedia(video);
@@ -909,10 +915,10 @@
     }
 
     // ---- управление ----
-    const showError = (text) => {
+    function showError(text) {
       const el = $("#vpErr"); el.textContent = text; el.classList.remove("hidden");
       vp.classList.remove("loading");
-    };
+    }
     function wake() {
       vp.classList.remove("idle");
       clearTimeout(state.hideT);
@@ -1132,33 +1138,20 @@
     video.addEventListener("ended", saveProgress);
     window.addEventListener("pagehide", saveProgress);
 
-    // ---- реклама (только без VIP): два показа в случайные моменты, без перемотки и паузы ----
-    const adCfg = data.ad || null;
-    if (adCfg) {
-      adVid.src = adCfg.src;
-      adLink.disabled = !adCfg.link;
-      adLink.onclick = (e) => {
-        e.stopPropagation();
-        if (!adCfg.link) return;
-        if (tg && tg.openLink) tg.openLink(adCfg.link); else window.open(adCfg.link, "_blank", "noopener");
-      };
-    }
-    const pickAdTimes = () => {
-      const d = dur();
-      if (!(d > 120)) return [];
-      const a = d * (0.1 + Math.random() * 0.35);
-      const b = d * (0.5 + Math.random() * 0.35);
-      return [a, b];
-    };
-    function startAd() {
-      state.ad = { back: video.currentTime };
+    // ---- реклама (только без VIP): ролик стартует у своей отметки; при перемотке через отметку сдвигается на 10-20 с после места продолжения ----
+    const adList = (data.ads || []).map((a) => ({ ...a, shown: false }));
+    state.lastT = 0;
+    function startAd(a) {
+      a.shown = true;
+      state.ad = { back: video.currentTime, link: a.link || "" };
       video.pause();
       vp.classList.add("ad-on");
       resumeBtn.classList.add("hidden");
       adEl.classList.remove("hidden");
       adSkip.classList.add("hidden");
       adFill.style.width = "0%";
-      adVid.currentTime = 0;
+      adLink.disabled = !a.link;
+      adVid.src = a.src;
       const go = () => adVid.play().catch(() => { adVid.muted = true; adVid.play().catch(() => endAd()); });
       go();
       clearTimeout(state.adSkipT);
@@ -1172,10 +1165,23 @@
       adVid.pause();
       adEl.classList.add("hidden");
       vp.classList.remove("ad-on");
+      state.lastT = back;
       video.currentTime = back;
       video.play().catch(() => {});
     }
-    if (adCfg) {
+    function checkAds() {
+      if (state.ad || video.seeking) return;
+      const t = video.currentTime;
+      const a = adList.find((x) => !x.shown && x.at <= t);
+      if (a) startAd(a);
+    }
+    if (adList.length) {
+      adLink.onclick = (e) => {
+        e.stopPropagation();
+        const l = state.ad && state.ad.link;
+        if (!l) return;
+        if (tg && tg.openLink) tg.openLink(l); else window.open(l, "_blank", "noopener");
+      };
       adSkip.onclick = (e) => { e.stopPropagation(); endAd(); };
       adVid.addEventListener("ended", endAd);
       adVid.addEventListener("error", () => { if (state.ad) endAd(); });
@@ -1183,10 +1189,19 @@
         if (adVid.duration) adFill.style.width = (adVid.currentTime / adVid.duration * 100) + "%";
       });
       video.addEventListener("timeupdate", () => {
-        if (state.ad) return;
-        if (state.adTimes === null) state.adTimes = pickAdTimes();
-        const next = state.adTimes[state.adIdx];
-        if (next !== undefined && video.currentTime >= next) { state.adIdx++; startAd(); }
+        if (video.seeking) return;
+        state.lastT = video.currentTime;
+        checkAds();
+      });
+      // перемотка вперёд через отметку ролика: ролик переносится на место продолжения + 10..20 с
+      video.addEventListener("seeked", () => {
+        const from = state.lastT, to = video.currentTime;
+        state.lastT = to;
+        if (state.ad || to <= from + 2) return;
+        for (const a of adList) {
+          if (!a.shown && a.at > from && a.at <= to) a.at = to + 10 + Math.random() * 10;
+        }
+        checkAds();
       });
     }
     const onFs = () => {
@@ -1315,9 +1330,15 @@
       return;
     }
     const vipLine = S.me.vipActive ? `VIP до ${esc(fmtDate(S.me.vipUntil))}` : "VIP нет";
+    const initial = esc(String(S.me.name || "?").trim().charAt(0).toUpperCase());
     app.innerHTML = `
-      <h1>${esc(S.me.name)}</h1>
-      <p class="sub">Роль: ${esc(S.me.roleTitle)} · ${vipLine}</p>
+      <div class="prof-head" style="display:flex;align-items:center;gap:18px;margin-bottom:10px">
+        <span class="ava ava-lg"><b>${initial}</b><img src="/api/avatar/${esc(S.me.id)}" alt="" onerror="this.remove()"></span>
+        <div style="min-width:0">
+          <h1 style="margin:0 0 6px">${esc(S.me.name)}</h1>
+          <p class="sub" style="margin:0">Роль: ${esc(S.me.roleTitle)} · ${vipLine}</p>
+        </div>
+      </div>
       <p class="sub">ID: ${esc(S.me.id)}</p>
       <section class="section">
         <h2>История просмотров</h2>
@@ -1326,7 +1347,8 @@
     const rows = await call("/api/me/history").catch(() => []);
     if (S.route !== "profile") return;
     $("#history").innerHTML = rows.length
-      ? rows.map((f) => `<a class="hist-card" href="#/film/${f.id}" style="${f.hasPoster ? `--poster: url('/api/films/${f.id}/poster')` : ""}">
+      ? rows.map((f) => `<a class="hist-card" href="#/film/${f.id}">
+          <div class="hist-cover">${f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="" onerror="this.remove()">` : ""}</div>
           <div class="hist-info">
             <b>${esc(f.title)}</b>
             <span>Дата выхода: ${esc(fmtRelease(f.releaseDate))}</span>
@@ -1578,12 +1600,11 @@
   function adminUpload() {
     $("#admin").innerHTML = `<div class="glass">
       <label class="field"><span>Тип</span>
-        <select id="u-kind"><option value="video">Загрузить видео</option><option value="link">Ссылка (TikTok, YouTube)</option><option value="series">Сериал (карточка, серии добавляются потом)</option></select></label>
+        <select id="u-kind"><option value="video">Загрузить видео</option><option value="series">Сериал (карточка, серии добавляются потом)</option></select></label>
       <div id="u-video">
         <label class="field"><span>Видеофайл</span><input type="file" id="u-file" accept="video/*"></label>
         <p class="hint">Максимум 2 ГБ. Видео переводится в 144p, 480p и 720p. Субтитры добавляются после загрузки.</p>
       </div>
-      <div id="u-link" class="hidden"><label class="field"><span>Ссылка</span><input type="url" id="u-url" placeholder="https://"></label></div>
       <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
       <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
       <label class="field"><span>Дата выхода</span><input type="date" id="u-date"></label>
@@ -1597,7 +1618,6 @@
     const kind = $("#u-kind");
     kind.onchange = () => {
       $("#u-video").classList.toggle("hidden", kind.value !== "video");
-      $("#u-link").classList.toggle("hidden", kind.value !== "link");
       $("#u-poster").closest("label").classList.toggle("hidden", false);
     };
     $("#u-send").onclick = async () => {
@@ -1633,8 +1653,6 @@
         try {
           fd.append("uploadId", await uploadVideoChunked(f, $("#u-progress")));
         } catch (_) { $("#u-send").disabled = false; return; }
-      } else {
-        fd.append("url", $("#u-url").value.trim());
       }
       const p = $("#u-poster").files[0];
       if (p) fd.append("poster", p, p.name);
@@ -1651,44 +1669,53 @@
 
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+  function parseTime(str) {
+    const m = /^(\d{1,3}):([0-5]?\d)$/.exec(String(str || "").trim());
+    return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+  }
+
   async function adminAds() {
     const box = $("#admin");
-    const cur = await call("/api/admin/ad").catch(() => null);
-    if (!cur) { box.innerHTML = '<div class="empty">Нет доступа</div>'; return; }
+    const list = await call("/api/admin/ads").catch(() => null);
+    if (!list) { box.innerHTML = '<div class="empty">Нет доступа</div>'; return; }
+    const rows = list.map((a) => `<div class="list-row">
+        <div class="info"><b>${esc(fmtClock(a.startSec))}</b><small>${a.link ? esc(a.link) : "Без ссылки"}</small></div>
+        <button class="btn ghost small" data-ad-del="${a.id}">Удалить</button>
+      </div>`).join("");
     box.innerHTML = `<div class="glass">
       <h2>Реклама</h2>
-      <p class="sub">Ролик показывается пользователям без VIP дважды за просмотр, в случайные моменты. Через 3 секунды появляется кнопка «Пропустить». По клику на ролик открывается ссылка.</p>
-      <label class="field"><span>Ссылка рекламодателя</span><input type="text" id="adLinkInput" value="${esc(cur.link)}" placeholder="https://..." maxlength="500"></label>
+      <p class="sub">Ролик загружается без обработки. Показывается пользователям без VIP, когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</p>
+      <div id="ad-list">${rows || '<div class="sub" style="margin:0">Роликов пока нет</div>'}</div>
+      <h2 style="margin-top:24px">Добавить ролик</h2>
       <label class="field"><span>Ролик (видео)</span><input type="file" id="adFile" accept="video/*"></label>
-      <div class="row">
-        <button class="btn small" id="adSave">Сохранить</button>
-        ${cur.hasVideo ? '<button class="btn ghost small" id="adDel">Удалить ролик</button>' : ""}
-      </div>
+      <label class="field"><span>Начало показа (мм:сс)</span><input type="text" id="adTime" placeholder="10:00" maxlength="7"></label>
+      <label class="field"><span>Ссылка (необязательно)</span><input type="url" id="adLinkInput" placeholder="https://" maxlength="500"></label>
       <div class="progress" id="ad-progress"><div></div></div>
-      <p class="sub" style="margin:14px 0 0">${cur.hasVideo ? "Ролик загружен" : "Ролик не загружен"}</p>
+      <div class="row" style="margin-top:16px"><button class="btn" id="adSave">Добавить ролик</button></div>
     </div>`;
     $("#adSave").onclick = async () => {
-      const link = $("#adLinkInput").value.trim();
       const file = $("#adFile").files[0];
+      const sec = parseTime($("#adTime").value);
+      if (!file) { toast("Выберите видеофайл"); return; }
+      if (!(sec >= 0)) { toast("Укажите время в формате мм:сс"); return; }
+      if (file.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
       const btn = $("#adSave");
       btn.disabled = true;
       try {
-        let uploadId = "";
-        if (file) {
-          if (file.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
-          uploadId = await uploadVideoChunked(file, $("#ad-progress"));
-        }
-        await call("/api/admin/ad", { body: { link, uploadId } });
-        toast("Реклама сохранена");
+        const uploadId = await uploadVideoChunked(file, $("#ad-progress"));
+        await call("/api/admin/ads", { body: { uploadId, startSec: sec, link: $("#adLinkInput").value.trim() } });
+        toast("Ролик добавлен");
         adminAds();
-      } catch (_) { /* тост уже показан */ } finally { btn.disabled = false; }
+      } catch (_) { btn.disabled = false; }
     };
-    const del = $("#adDel");
-    if (del) del.onclick = async () => {
-      await call("/api/admin/ad/delete", { body: {} }).catch(() => null);
-      toast("Ролик удалён");
-      adminAds();
-    };
+    box.querySelectorAll("[data-ad-del]").forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        await call(`/api/admin/ads/${b.dataset.adDel}/delete`, { body: {} }).catch(() => null);
+        toast("Ролик удалён");
+        adminAds();
+      };
+    });
   }
 
   async function adminUsers() {

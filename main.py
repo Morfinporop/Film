@@ -70,7 +70,6 @@ CHUNK_SIZE = 8 * 1024 * 1024                    # видео уходит час
 SUB_EXT = {".srt", ".vtt", ".ass", ".ssa", ".sub"}
 VIP_MONTH_DAYS, VIP_YEAR_DAYS = 30, 365
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
-TIKTOK_RE = re.compile(r"tiktok\.com/(?:@[^/]+/video/|v/|embed/(?:v2/)?)(\d+)")
 YOUTUBE_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]{6,})")
 
 log = logging.getLogger("film-hub")
@@ -277,6 +276,14 @@ CREATE TABLE IF NOT EXISTS watch (
     duration   REAL    NOT NULL DEFAULT 0,
     updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, film_id)
+);
+
+CREATE TABLE IF NOT EXISTS ads (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_sec  INTEGER NOT NULL DEFAULT 0,
+    link       TEXT    NOT NULL DEFAULT '',
+    ext        TEXT    NOT NULL DEFAULT '.mp4',
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -563,6 +570,19 @@ class Database:
                ORDER BY w.updated_at DESC LIMIT ?""",
             (user_id, limit),
         )
+
+    def add_ad(self, start_sec: int, link: str, ext: str) -> int:
+        cur = self.conn.execute("INSERT INTO ads (start_sec, link, ext) VALUES (?, ?, ?)", (start_sec, link, ext))
+        return int(cur.lastrowid)
+
+    def list_ads(self) -> list[dict]:
+        return self._all("SELECT * FROM ads ORDER BY start_sec, id")
+
+    def get_ad(self, ad_id: int) -> dict | None:
+        return self._one("SELECT * FROM ads WHERE id = ?", (ad_id,))
+
+    def delete_ad(self, ad_id: int) -> None:
+        self.conn.execute("DELETE FROM ads WHERE id = ?", (ad_id,))
 
     def get_setting(self, key: str) -> str | None:
         row = self._one("SELECT value FROM settings WHERE key = ?", (key,))
@@ -869,9 +889,6 @@ def check_media_token(secret: bytes, film_id: int, token: str) -> bool:
 
 
 def embed_url(url: str) -> str:
-    m = TIKTOK_RE.search(url)
-    if m:
-        return f"https://www.tiktok.com/embed/v2/{m.group(1)}"
     m = YOUTUBE_RE.search(url)
     if m:
         return f"https://www.youtube.com/embed/{m.group(1)}"
@@ -908,7 +925,7 @@ def verify_init_data(init_data: str, token: str, max_age: int = 86400) -> dict |
 # ============================================================================
 START_TEXT = (
     "Здравствуйте, искатель фильмов! Вы попали к нам удачно. "
-    "Здесь множество фильмов и сериалов, в том числе озвученных с помощью ИИ, как в TikTok. "
+    "Здесь множество фильмов и сериалов, в том числе озвученных с помощью ИИ. "
     "Мы стараемся для вас. Если хотите нас поддержать, купите VIP."
 )
 
@@ -1148,6 +1165,9 @@ class Api:
                  "canDelete": bool(user and (r["user_id"] == user["id"] or at_least(user["role"], ADMIN)))}
                 for r in self.db.reviews(film["id"])
             ]
+            fives = [x for x in data["reviews"] if x["rating"] == 5]
+            fives.sort(key=lambda x: hashlib.sha256(f"{film['id']}:{x['id']}".encode()).hexdigest())
+            data["featured"] = fives[:3]
         return data
 
     def can_manage(self, user: dict, film: dict) -> bool:
@@ -1334,15 +1354,16 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         pos = float(watch.get("position") or 0)
         dur = float(watch.get("duration") or film["duration"] or 0)
         resume_at = pos if 5 < pos < dur - 15 else 0
-        ad = None
-        if not api.vip_active(user) and dur >= 30 and (media_root / "ad" / "ad.mp4").exists():
-            ad = {"src": "/api/ad/video", "link": db.get_setting("ad_link") or ""}
+        ads = []
+        if not api.vip_active(user) and dur >= 30:
+            ads = [{"id": a["id"], "src": f"/api/ad/{a['id']}/video", "link": a["link"], "at": a["start_sec"]}
+                   for a in db.list_ads()]
         token = make_media_token(api.secret, film["id"])
         subs = [{"lang": n, "label": SUB_LABELS.get(n.rstrip("0123456789"), n.upper()),
                  "src": f"/api/media/{film['id']}/{token}/subs/{n}.vtt"}
                 for n in list_subtitles(media_root / str(film["id"]))]
         return _json({"kind": "hls", "src": f"/api/media/{film['id']}/{token}/master.m3u8", "subtitles": subs,
-                      "width": film["width"], "height": film["height"], "resumeAt": resume_at, "ad": ad})
+                      "width": film["width"], "height": film["height"], "resumeAt": resume_at, "ads": ads})
 
     async def media(request: web.Request) -> web.StreamResponse:
         try:
@@ -1496,7 +1517,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                     return _err("video_required", 400)
                 if len(upload_item["received"]) != upload_item["total"]:
                     return _err("upload_incomplete", 400)
-            if kind not in ("video", "link"):
+            if kind != "video":
                 return _err("bad_kind", 400)
             series = None
             season = episode = 0
@@ -1836,59 +1857,67 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         missing.touch()
         return web.Response(status=404)
 
-    ad_path = media_root / "ad" / "ad.mp4"
+    ad_dir = media_root / "ad"
 
-    async def ad_video(_: web.Request) -> web.Response:
-        if not ad_path.exists():
+    def ad_file(row: dict) -> Path:
+        return ad_dir / f"{row['id']}{row['ext']}"
+
+    def ad_id_of(request: web.Request) -> int | None:
+        try:
+            return int(request.match_info["id"])
+        except ValueError:
+            return None
+
+    async def ad_video(request: web.Request) -> web.Response:
+        row = db.get_ad(ad_id_of(request) or -1)
+        if not row or not ad_file(row).exists():
             return web.Response(status=404)
-        return web.FileResponse(ad_path, headers={"Cache-Control": "no-cache", "Content-Type": "video/mp4"})
+        return web.FileResponse(ad_file(row), headers={"Cache-Control": "no-cache"})
 
-    async def admin_ad_get(request: web.Request) -> web.Response:
+    async def admin_ads_list(request: web.Request) -> web.Response:
         _, bad = staff_user(request, ADMIN)
         if bad:
             return bad
-        return _json({"hasVideo": ad_path.exists(), "link": db.get_setting("ad_link") or ""})
+        return _json([{"id": a["id"], "startSec": a["start_sec"], "link": a["link"]} for a in db.list_ads()])
 
-    async def admin_ad_save(request: web.Request) -> web.Response:
+    async def admin_ad_add(request: web.Request) -> web.Response:
         user, bad = staff_user(request, ADMIN)
         if bad:
             return bad
         try:
             body = await request.json()
-        except json.JSONDecodeError:
+            start = int(body.get("startSec", -1))
+        except (ValueError, TypeError, json.JSONDecodeError):
             return _err("bad_request", 400)
+        if not (0 <= start <= 86400):
+            return _err("bad_time", 400)
         link = str(body.get("link", "")).strip()
         if link and not URL_RE.match(link):
             return _err("bad_url", 400)
-        db.set_setting("ad_link", link)
         uid = str(body.get("uploadId", "") or "")
-        if uid:
-            item = uploads.get(uid, user["id"])
-            if not item:
-                return _err("video_required", 400)
-            if len(item["received"]) != item["total"]:
-                return _err("upload_incomplete", 400)
-            ad_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_out = ad_path.parent / "ad.tmp.mp4"
-            await _run([
-                "-hide_banner", "-loglevel", "error", "-y", "-i", str(item["path"]),
-                "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=-2:'min(720,ih)'",
-                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp_out),
-            ])
-            uploads.discard(uid)
-            if not tmp_out.exists() or tmp_out.stat().st_size == 0:
-                tmp_out.unlink(missing_ok=True)
-                return _err("bad_video", 400)
-            os.replace(tmp_out, ad_path)
-        return _json({"ok": True, "hasVideo": ad_path.exists(), "link": link})
+        item = uploads.get(uid, user["id"])
+        if not item:
+            return _err("video_required", 400)
+        if len(item["received"]) != item["total"]:
+            return _err("upload_incomplete", 400)
+        ext = Path(str(item.get("name", ""))).suffix.lower()
+        if not re.fullmatch(r"\.[a-z0-9]{1,5}", ext):
+            ext = ".mp4"
+        ad_dir.mkdir(parents=True, exist_ok=True)
+        ad_id = db.add_ad(start, link, ext)  # ролик не перекодируется, сохраняется как есть
+        shutil.move(str(item["path"]), ad_dir / f"{ad_id}{ext}")
+        uploads.discard(uid)
+        return _json({"ok": True, "id": ad_id}, 201)
 
     async def admin_ad_delete(request: web.Request) -> web.Response:
         _, bad = staff_user(request, ADMIN)
         if bad:
             return bad
-        ad_path.unlink(missing_ok=True)
-        db.set_setting("ad_link", "")
+        row = db.get_ad(ad_id_of(request) or -1)
+        if not row:
+            return _err("not_found", 404)
+        ad_file(row).unlink(missing_ok=True)
+        db.delete_ad(row["id"])
         return _json({"ok": True})
 
     routes = [
@@ -1907,10 +1936,10 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("POST", "/api/films/{film_id}/progress", progress),
         ("GET", "/api/me/history", history),
         ("GET", "/api/avatar/{uid}", avatar),
-        ("GET", "/api/ad/video", ad_video),
-        ("GET", "/api/admin/ad", admin_ad_get),
-        ("POST", "/api/admin/ad", admin_ad_save),
-        ("POST", "/api/admin/ad/delete", admin_ad_delete),
+        ("GET", "/api/ad/{id}/video", ad_video),
+        ("GET", "/api/admin/ads", admin_ads_list),
+        ("POST", "/api/admin/ads", admin_ad_add),
+        ("POST", "/api/admin/ads/{id}/delete", admin_ad_delete),
         ("POST", "/api/reviews/{id}/delete", delete_review),
         ("POST", "/api/pay/invoice", invoice),
         ("GET", "/api/admin/films", admin_films),
