@@ -3,758 +3,541 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0b12" />
-  <title>FILM·WEB</title>
+  <title>Фильмы</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --red: #e62429;
-      --red-2: #ff4b4f;
-      --blue: #1d4fd8;
-      --blue-2: #3b82f6;
-      --ink: #07080d;
-      --panel: rgba(16, 18, 30, .78);
-      --panel-2: rgba(255, 255, 255, .06);
-      --line: rgba(255, 255, 255, .09);
-      --text: #f4f6fb;
-      --muted: #9aa3b8;
-      --gold: #f5c04a;
+      --bg: #0a0a0c;
+      --text: #f4f4f5;
+      --muted: rgba(244, 244, 245, 0.56);
+      --line: rgba(255, 255, 255, 0.10);
+      --card: rgba(18, 18, 22, 0.72);
+      --accent: #ffffff;
+      --accent-text: #0a0a0c;
       --radius: 18px;
-      --bg-image: url("https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg");
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; }
+    html, body { height: 100%; margin: 0; }
     body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
       color: var(--text);
-      background: var(--ink);
-      overflow-x: hidden;
+      background: var(--bg) center / cover no-repeat fixed;
+      -webkit-font-smoothing: antialiased;
     }
+    /* затемнение поверх фонового изображения для читаемости */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(10, 10, 12, 0.62) 0%, rgba(10, 10, 12, 0.86) 45%, rgba(10, 10, 12, 0.96) 100%);
+      z-index: -1;
+    }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; border: 0; background: none; padding: 0; }
 
-    /* ---------- фон: картинка + затемнение + паутина ---------- */
-    .bg {
-      position: fixed; inset: 0; z-index: -2;
-      background: var(--bg-image) center / cover no-repeat fixed, var(--ink);
-      filter: saturate(1.1);
-    }
-    .bg::after {
-      content: ""; position: absolute; inset: 0;
-      background:
-        radial-gradient(120% 60% at 50% -10%, rgba(230, 36, 41, .35), transparent 60%),
-        radial-gradient(90% 50% at 100% 110%, rgba(29, 79, 216, .4), transparent 60%),
-        linear-gradient(180deg, rgba(7, 8, 13, .72) 0%, rgba(7, 8, 13, .9) 60%, rgba(7, 8, 13, .97) 100%);
-    }
-    .web {
-      position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .09;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'><g fill='none' stroke='%23ffffff' stroke-width='1'><path d='M80 0V160M0 80H160M0 0L160 160M160 0L0 160'/><circle cx='80' cy='80' r='24'/><circle cx='80' cy='80' r='48'/><circle cx='80' cy='80' r='72'/></g></svg>");
-      background-size: 160px 160px;
-    }
-
-    /* ---------- иконки ---------- */
-    .ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-    .ic.fill { fill: currentColor; stroke: none; }
-    .ic.sm { width: 16px; height: 16px; }
-
-    /* ---------- шапка ---------- */
-    .top {
-      position: sticky; top: 0; z-index: 10;
-      padding: calc(env(safe-area-inset-top) + 14px) 16px 12px;
-      background: linear-gradient(180deg, rgba(7, 8, 13, .96), rgba(7, 8, 13, .72));
-      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-      border-bottom: 1px solid var(--line);
-    }
-    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .logo {
-      width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
-      background: linear-gradient(135deg, var(--red), #9c1216 55%, var(--blue));
-      box-shadow: 0 6px 20px rgba(230, 36, 41, .35);
-    }
-    .brand-title { font-weight: 800; letter-spacing: .04em; font-size: 17px; }
-    .brand-title span { color: var(--red-2); }
-    .brand-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
-    .status-pill {
-      margin-left: auto; font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px;
-      background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
-    }
-    .status-pill.vip { color: #1b1300; background: linear-gradient(135deg, #ffd66b, var(--gold)); border: 0; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 28px 22px 120px; }
+    h1 { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; margin: 8px 2px 22px; }
+    .sub { color: var(--muted); font-size: 14px; margin: -14px 2px 22px; }
 
     .search {
-      display: flex; align-items: center; gap: 10px;
-      height: 46px; padding: 0 14px; border-radius: 14px;
-      background: var(--panel-2); border: 1px solid var(--line);
-      transition: border-color .2s, box-shadow .2s;
+      width: 100%;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 2px;
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 26px;
     }
-    .search:focus-within { border-color: rgba(230, 36, 41, .7); box-shadow: 0 0 0 4px rgba(230, 36, 41, .15); }
-    .search input {
-      flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
-      color: var(--text); font: inherit; font-size: 16px;
-    }
-    .search input::placeholder { color: var(--muted); }
-    .search .clear { border: 0; background: none; color: var(--muted); padding: 4px; display: none; cursor: pointer; }
-    .search.has-text .clear { display: block; }
+    .search::placeholder { color: var(--muted); }
 
-    .chips { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 2px; scrollbar-width: none; }
-    .chips::-webkit-scrollbar { display: none; }
-    .chip {
-      flex: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
-      padding: 8px 14px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-      transition: all .2s;
-    }
-    .chip.on { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--red), #b51b20); box-shadow: 0 6px 16px rgba(230, 36, 41, .3); }
-
-    /* ---------- контент ---------- */
-    main { padding: 14px 14px calc(96px + env(safe-area-inset-bottom)); max-width: 760px; margin: 0 auto; }
-    .section-title { display: flex; align-items: center; justify-content: space-between; margin: 18px 2px 10px; }
-    .section-title h2 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: .02em; }
-    .section-title small { color: var(--muted); font-size: 12px; }
-
-    /* hero */
-    .hero {
-      position: relative; border-radius: 22px; overflow: hidden; min-height: 280px;
-      display: flex; align-items: flex-end; padding: 18px; cursor: pointer;
-      background: linear-gradient(135deg, #1b2a6b, #0b0d18 50%, #5a0c10);
-      border: 1px solid var(--line); box-shadow: 0 20px 50px rgba(0, 0, 0, .45);
-    }
-    .hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    .hero::before {
-      content: ""; position: absolute; inset: 0;
-      background: linear-gradient(0deg, rgba(7, 8, 13, .98) 8%, rgba(7, 8, 13, .25) 65%, rgba(7, 8, 13, .1));
-    }
-    .hero-body { position: relative; width: 100%; }
-    .hero-tag {
-      display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
-      text-transform: uppercase; padding: 5px 9px; border-radius: 8px; background: var(--red); color: #fff;
-    }
-    .hero h1 { margin: 10px 0 8px; font-size: 26px; line-height: 1.1; font-weight: 900; text-shadow: 0 4px 20px rgba(0,0,0,.5); }
-    .hero-row { display: flex; align-items: center; gap: 10px; }
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      height: 44px; padding: 0 18px; border-radius: 14px; border: 0; font: inherit; font-weight: 700; font-size: 15px;
-      color: #fff; cursor: pointer; text-decoration: none; transition: transform .15s, filter .2s;
-    }
-    .btn:active { transform: scale(.97); }
-    .btn-red { background: linear-gradient(135deg, var(--red-2), var(--red)); box-shadow: 0 10px 24px rgba(230, 36, 41, .35); }
-    .btn-blue { background: linear-gradient(135deg, var(--blue-2), var(--blue)); box-shadow: 0 10px 24px rgba(29, 79, 216, .35); }
-    .btn-ghost { background: var(--panel-2); border: 1px solid var(--line); color: var(--text); }
-    .btn-gold { background: linear-gradient(135deg, #ffd66b, var(--gold)); color: #1b1300; box-shadow: 0 10px 24px rgba(245, 192, 74, .3); }
-    .btn-block { width: 100%; }
-    .meta { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
-
-    /* grid & cards */
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    @media (min-width: 560px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-    .card {
-      position: relative; border: 1px solid var(--line); padding: 0; border-radius: var(--radius); overflow: hidden;
-      background: var(--panel); color: inherit; text-align: left; cursor: pointer; font: inherit;
-      transition: transform .2s, border-color .2s, box-shadow .2s;
-    }
-    .card:hover { transform: translateY(-2px); border-color: rgba(230, 36, 41, .45); box-shadow: 0 14px 30px rgba(0,0,0,.45); }
-    .card:active { transform: scale(.98); }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 16px; }
+    .card { text-align: left; min-width: 0; }
     .poster {
-      position: relative; width: 100%; aspect-ratio: 2 / 3; display: block;
-      background:
-        radial-gradient(60% 50% at 30% 20%, rgba(230, 36, 41, .45), transparent 70%),
-        radial-gradient(70% 60% at 80% 90%, rgba(29, 79, 216, .5), transparent 70%),
-        #0d1020;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: linear-gradient(145deg, #2a2a30, #121216);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 34px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.35);
     }
     .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .poster::after {
-      content: ""; position: absolute; inset: 0;
-      background: linear-gradient(0deg, rgba(7, 8, 13, .95) 0%, rgba(7, 8, 13, 0) 55%);
-    }
-    .poster-icon { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.2); z-index: 1; }
-    .badge {
-      position: absolute; top: 9px; left: 9px; z-index: 2; display: inline-flex; align-items: center; gap: 5px;
-      font-size: 11px; font-weight: 700; padding: 5px 8px; border-radius: 9px; background: rgba(7, 8, 13, .72);
-      border: 1px solid var(--line); backdrop-filter: blur(8px);
-    }
-    .badge.vip { background: linear-gradient(135deg, #ffd66b, var(--gold)); color: #1b1300; border: 0; }
-    .badge.lock { color: var(--gold); }
-    .card-body { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 10px 11px 11px; }
-    .card-title { font-size: 14px; font-weight: 700; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .card-meta { margin-top: 5px; display: flex; gap: 10px; color: var(--muted); font-size: 11px; }
+    .card-title { margin-top: 10px; font-size: 14px; font-weight: 550; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-meta { margin-top: 3px; font-size: 12px; color: var(--muted); }
+    .card-meta.vip { color: var(--text); }
 
-    .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
-    .empty .ic { width: 40px; height: 40px; margin: 0 auto 10px; display: block; color: rgba(255,255,255,.25); }
-    .skeleton { border-radius: var(--radius); aspect-ratio: 2 / 3; background: linear-gradient(90deg, #111426, #1a1f36, #111426); background-size: 200% 100%; animation: sh 1.2s infinite; }
-    @keyframes sh { to { background-position: -200% 0; } }
+    .list { display: flex; flex-direction: column; gap: 12px; }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px;
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--line);
+      text-align: left;
+      width: 100%;
+    }
+    .thumb { width: 52px; height: 74px; border-radius: 10px; overflow: hidden; flex: none; background: #1b1b20; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .row-body { min-width: 0; flex: 1; }
+    .row-title { font-size: 15px; font-weight: 580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row-meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .tag { font-size: 13px; color: var(--text); white-space: nowrap; }
 
-    .did-you-mean { display: flex; gap: 10px; align-items: center; padding: 11px 13px; border-radius: 14px; background: rgba(29,79,216,.14); border: 1px solid rgba(59,130,246,.35); margin-bottom: 12px; font-size: 13px; color: #cfe0ff; }
+    .balance-card {
+      padding: 26px 24px;
+      border-radius: 24px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      margin-bottom: 22px;
+    }
+    .balance-label { font-size: 14px; color: var(--muted); }
+    .balance-value { font-size: 48px; font-weight: 650; letter-spacing: -0.02em; margin-top: 6px; }
+    .balance-unit { font-size: 16px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+    .pills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 30px; }
+    .pill {
+      height: 56px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      font-size: 15px;
+      font-weight: 580;
+    }
+    .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 2px 12px; }
 
-    /* VIP */
-    .vip-hero {
-      border-radius: 22px; padding: 22px 20px; position: relative; overflow: hidden;
-      background: linear-gradient(135deg, rgba(245,192,74,.2), rgba(230,36,41,.18) 50%, rgba(29,79,216,.2));
-      border: 1px solid rgba(245,192,74,.35);
+    .nav {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+      background: rgba(10, 10, 12, 0.72);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-top: 1px solid var(--line);
+      z-index: 5;
     }
-    .vip-hero h1 { margin: 8px 0 6px; font-size: 24px; font-weight: 900; }
-    .vip-hero p { margin: 0; color: #d7dcea; font-size: 14px; line-height: 1.5; }
-    .crown-big { width: 52px; height: 52px; color: var(--gold); }
-    .perks { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 10px; }
-    .perks li { display: flex; gap: 10px; align-items: center; font-size: 14px; }
-    .perks .ic { color: var(--gold); }
-    .plans { display: grid; gap: 10px; margin-top: 14px; }
-    .plan {
-      display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: var(--radius);
-      background: var(--panel); border: 1px solid var(--line); cursor: pointer; text-align: left; color: inherit; font: inherit; width: 100%;
-      transition: border-color .2s, transform .15s;
-    }
-    .plan:active { transform: scale(.985); }
-    .plan.best { border-color: rgba(245,192,74,.6); box-shadow: 0 10px 30px rgba(245,192,74,.12); }
-    .plan .p-title { font-weight: 800; font-size: 16px; }
-    .plan .p-sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
-    .plan .p-price { margin-left: auto; font-weight: 900; font-size: 18px; color: var(--gold); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
-    .tag-best { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: var(--gold); color: #1b1300; padding: 3px 7px; border-radius: 6px; margin-left: 6px; }
+    .nav button { font-size: 14px; color: var(--muted); padding: 8px 0; font-weight: 550; }
+    .nav button.on { color: var(--text); }
 
-    /* профиль */
-    .profile { display: grid; gap: 12px; }
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
-    .row { display: flex; align-items: center; gap: 12px; }
-    .avatar { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(135deg, var(--red), var(--blue)); color: #fff; }
-    .kv { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-    .kv:last-child { border-bottom: 0; }
-    .kv span:first-child { color: var(--muted); }
-
-    /* нижняя навигация */
-    .tabbar {
-      position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 10px); z-index: 20;
-      width: min(440px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px;
-      background: rgba(16, 18, 30, .82); border: 1px solid var(--line); border-radius: 22px;
-      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 18px 40px rgba(0,0,0,.5);
+    /* карточка фильма (экран просмотра) */
+    .sheet {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 8, 10, 0.97);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      overflow-y: auto;
+      z-index: 10;
+      display: none;
     }
-    .tab {
-      border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600;
-      display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 7px; border-radius: 16px; cursor: pointer; transition: all .2s;
-    }
-    .tab.on { color: #fff; background: linear-gradient(135deg, rgba(230,36,41,.95), rgba(160,20,24,.95)); box-shadow: 0 8px 18px rgba(230,36,41,.3); }
-    .tab.on.vip-tab { background: linear-gradient(135deg, #ffd66b, var(--gold)); color: #1b1300; box-shadow: 0 8px 18px rgba(245,192,74,.3); }
-
-    /* плеер */
-    .overlay {
-      position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
-      background: rgba(4, 5, 9, .96); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      animation: fade .25s ease;
-    }
-    .overlay[hidden] { display: none; }
-    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-    .ov-head { display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 12px) 14px 12px; }
-    .ov-title { flex: 1; min-width: 0; font-weight: 800; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .icon-btn {
-      width: 40px; height: 40px; border-radius: 13px; border: 1px solid var(--line); background: var(--panel-2);
-      color: var(--text); display: grid; place-items: center; cursor: pointer; flex: none;
-    }
-    .ov-body { flex: 1; overflow-y: auto; padding: 4px 14px calc(24px + env(safe-area-inset-bottom)); }
+    .sheet.open { display: block; }
+    .sheet-in { max-width: 560px; margin: 0 auto; padding: 22px 22px 60px; }
+    .back { font-size: 15px; color: var(--muted); padding: 6px 0; margin-bottom: 14px; }
     .player {
-      width: 100%; border-radius: 18px; background: #000; aspect-ratio: 16 / 9; max-height: 60vh; display: block;
-      box-shadow: 0 20px 50px rgba(230, 36, 41, .15); border: 1px solid var(--line);
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid var(--line);
+      margin-bottom: 22px;
     }
-    .ov-info { margin-top: 14px; }
-    .ov-info h2 { margin: 0 0 6px; font-size: 20px; font-weight: 900; }
-    .ov-sub { display: flex; gap: 12px; color: var(--muted); font-size: 13px; margin-bottom: 14px; flex-wrap: wrap; }
-    .notice { padding: 16px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); text-align: center; }
-    .notice .ic { width: 44px; height: 44px; margin: 0 auto 10px; display: block; }
-    .notice p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 6px 0 14px; }
-    .sub-title { margin: 22px 0 10px; font-size: 14px; font-weight: 800; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
-    .ov-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
-    .mini-card { border: 0; padding: 0; background: var(--panel); color: inherit; border-radius: 12px; overflow: hidden; cursor: pointer; font: inherit; text-align: left; }
-    .mini-card .poster { aspect-ratio: 2/3; }
-    .mini-card .card-title { font-size: 12px; padding: 7px 8px 9px; -webkit-line-clamp: 2; }
+    .player video, .player iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .player-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; padding: 16px; text-align: center; }
+    .sheet h2 { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 8px; }
+    .sheet .meta { color: var(--muted); font-size: 14px; margin-bottom: 26px; }
+    .btn {
+      width: 100%;
+      height: 54px;
+      border-radius: 16px;
+      background: var(--accent);
+      color: var(--accent-text);
+      font-size: 16px;
+      font-weight: 620;
+    }
+    .btn:disabled { opacity: 0.4; }
+    .btn-ghost {
+      width: 100%;
+      height: 50px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      margin-top: 12px;
+      font-size: 15px;
+      font-weight: 550;
+    }
+    .note { margin-top: 16px; font-size: 13px; color: var(--muted); line-height: 1.5; min-height: 1em; }
 
     .toast {
-      position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px); transform: translate(-50%, 20px);
-      background: rgba(20, 22, 36, .95); border: 1px solid var(--line); padding: 11px 16px; border-radius: 14px;
-      font-size: 14px; opacity: 0; pointer-events: none; transition: all .25s; z-index: 60; max-width: calc(100% - 32px);
-      box-shadow: 0 12px 30px rgba(0,0,0,.5);
+      position: fixed;
+      left: 50%;
+      bottom: 96px;
+      transform: translateX(-50%);
+      background: rgba(30, 30, 36, 0.96);
+      border: 1px solid var(--line);
+      padding: 12px 18px;
+      border-radius: 14px;
+      font-size: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 20;
+      max-width: calc(100% - 40px);
+      text-align: center;
     }
-    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.show { opacity: 1; }
+    .empty { color: var(--muted); font-size: 15px; padding: 40px 0; text-align: center; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <div class="bg"></div>
-  <div class="web"></div>
+  <main class="wrap">
+    <section id="view-catalog">
+      <h1>Каталог</h1>
+      <input id="search" class="search" type="search" placeholder="Поиск" autocomplete="off" />
+      <div id="grid-catalog" class="grid"></div>
+    </section>
 
-  <header class="top">
-    <div class="brand">
-      <div class="logo" aria-hidden="true">
-        <svg class="ic" viewBox="0 0 24 24" style="color:#fff"><path d="M12 2.5c4.9 0 8.9 3.2 8.9 7.1H3.1C3.1 5.7 7.1 2.5 12 2.5z" fill="rgba(255,255,255,.15)" stroke="none"/><path d="M3 9.5c0 4.9 4 9 9 9s9-4.1 9-9M12 2.5v18.5M7 4.3c2.6 2.9 2.6 12.5 0 15.4M17 4.3c-2.6 2.9-2.6 12.5 0 15.4M3.6 14.2h16.8M3.6 9.5h16.8"/></svg>
+    <section id="view-vip" class="hidden">
+      <h1>VIP</h1>
+      <p class="sub">Фильмы открываются за звёзды Telegram</p>
+      <div id="list-vip" class="list"></div>
+    </section>
+
+    <section id="view-balance" class="hidden">
+      <h1>Баланс</h1>
+      <div class="balance-card">
+        <div class="balance-label">Доступно</div>
+        <div class="balance-value"><span id="balance">0</span><span class="balance-unit">звёзд</span></div>
       </div>
-      <div>
-        <div class="brand-title">FILM<span>·</span>WEB</div>
-        <div class="brand-sub" id="brandSub">Каталог фильмов</div>
-      </div>
-      <div class="status-pill" id="statusPill">Гость</div>
-    </div>
-    <label class="search" id="searchBox">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
-      <input id="q" type="search" placeholder="Название фильма, даже с опечаткой" autocomplete="off" enterkeyhint="search" />
-      <button class="clear" id="clearQ" type="button" aria-label="Очистить">
-        <svg class="ic sm" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
-      </button>
-    </label>
-    <div class="chips" id="chips">
-      <button class="chip on" data-filter="all" type="button">Все</button>
-      <button class="chip" data-filter="video" type="button">В приложении</button>
-      <button class="chip" data-filter="link" type="button">По ссылке</button>
-      <button class="chip" data-filter="vip" type="button">VIP</button>
-      <button class="chip" data-filter="top" type="button">Популярное</button>
-    </div>
-  </header>
+      <div class="section-title">Пополнить</div>
+      <div id="topups" class="pills"></div>
+      <div class="section-title">Мои фильмы</div>
+      <div id="list-owned" class="list"></div>
+    </section>
+  </main>
 
-  <main id="view"></main>
-
-  <nav class="tabbar" id="tabbar">
-    <button class="tab on" data-tab="home" type="button">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Главная
-    </button>
-    <button class="tab" data-tab="top" type="button">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M12 2c.6 3.2 3.6 4.7 3.6 8.6A3.6 3.6 0 0 1 8.4 10.6c0-1.8.8-2.9 1.6-4 .3 1.4 1 2.2 1.9 2.6C11.6 6.2 11.6 4 12 2z"/><path d="M7 16.5a5 5 0 0 0 10 0c0-1.6-.8-2.8-1.6-3.6.1 1.1-.4 1.9-1.1 2.2.1-2.2-.9-4.2-2.5-5.4.2 1.8-.6 3.1-1.6 3.5"/></svg>Топ
-    </button>
-    <button class="tab vip-tab" data-tab="vip" type="button">
-      <svg class="ic" viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 6l4.5 6L21 8l-2 11H5z"/></svg>VIP
-    </button>
-    <button class="tab" data-tab="profile" type="button">
-      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.4-4 4.4-6 8-6s6.6 2 8 6"/></svg>Профиль
-    </button>
+  <nav class="nav">
+    <button data-view="catalog" class="on" type="button">Каталог</button>
+    <button data-view="vip" type="button">VIP</button>
+    <button data-view="balance" type="button">Баланс</button>
   </nav>
 
-  <section class="overlay" id="player" hidden>
-    <div class="ov-head">
-      <div class="ov-title" id="ovTitle"></div>
-      <button class="icon-btn" id="ovClose" type="button" aria-label="Закрыть">
-        <svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
-      </button>
+  <div id="sheet" class="sheet">
+    <div class="sheet-in">
+      <button id="back" class="back" type="button">Назад</button>
+      <div id="player" class="player"></div>
+      <h2 id="sheet-title"></h2>
+      <div id="sheet-meta" class="meta"></div>
+      <button id="action" class="btn" type="button"></button>
+      <button id="open-external" class="btn-ghost hidden" type="button">Открыть в браузере</button>
+      <div id="note" class="note"></div>
     </div>
-    <div class="ov-body" id="ovBody"></div>
-  </section>
+  </div>
 
-  <div class="toast" id="toast" role="status"></div>
+  <div id="toast" class="toast"></div>
 
 <script>
 (() => {
-  "use strict";
-
-  // ---------- Telegram WebApp ----------
   const tg = window.Telegram && window.Telegram.WebApp;
-  const initData = tg && tg.initData ? tg.initData : "";
-  if (tg) {
-    tg.ready();
-    tg.expand();
-    try { tg.setHeaderColor("#07080d"); tg.setBackgroundColor("#07080d"); } catch (_) {}
-  }
-  const haptic = (type = "light") => { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(type); } catch (_) {} };
+  if (tg) { tg.ready(); tg.expand(); }
+  const initData = tg ? tg.initData : "";
 
-  // ---------- состояние ----------
-  const state = {
-    films: [],
-    me: { guest: true, role: "user", vip: false },
-    config: { botUsername: null, plans: [] },
-    tab: "home",
-    filter: "all",
-    query: "",
-    searchResults: null,
-    exact: true,
-  };
-
-  // ---------- иконки (SVG, без эмодзи) ----------
-  const I = {
-    play: '<svg class="ic fill" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>',
-    link: '<svg class="ic sm" viewBox="0 0 24 24"><path d="M10 13.5a4.5 4.5 0 0 0 6.4 0l2.8-2.8a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10.5a4.5 4.5 0 0 0-6.4 0l-2.8 2.8a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>',
-    lock: '<svg class="ic sm" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
-    crown: '<svg class="ic sm fill" viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 6l4.5 6L21 8l-2 11H5z"/></svg>',
-    eye: '<svg class="ic sm" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
-    close: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
-    back: '<svg class="ic" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
-    check: '<svg class="ic sm" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
-    star: '<svg class="ic sm fill" viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
-    search: '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>',
-    web: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 9.5c0 4.9 4 9 9 9s9-4.1 9-9M12 2.5v18.5M7 4.3c2.6 2.9 2.6 12.5 0 15.4M17 4.3c-2.6 2.9-2.6 12.5 0 15.4M3.6 14.2h16.8M3.6 9.5h16.8"/></svg>',
-    spark: '<svg class="ic sm" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg>',
-    film: '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg>',
-    bot: '<svg class="ic sm" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 13h.01M15 13h.01"/></svg>',
-    wifi: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 9a13 13 0 0 1 18 0M6 12.5a8.5 8.5 0 0 1 12 0M9.5 16a4 4 0 0 1 5 0M12 19.5h.01"/></svg>',
-  };
-
-  // ---------- утилиты ----------
-  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const $ = (sel) => document.querySelector(sel);
-  const view = $("#view");
+  const S = { config: null, films: [], me: null, film: null, query: "", view: "catalog" };
+  const $ = (id) => document.getElementById(id);
 
   function toast(text) {
-    const el = $("#toast");
-    el.textContent = text;
-    el.classList.add("show");
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+    const t = $("toast");
+    t.textContent = text;
+    t.classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
   }
 
-  async function api(path, opts = {}) {
-    const headers = Object.assign({}, opts.headers || {});
-    if (initData) headers["X-Telegram-Init-Data"] = initData;
-    const res = await fetch(path, { headers, cache: "no-store" });
-    if (!res.ok && res.status !== 404) {
-      let body = null;
-      try { body = await res.json(); } catch (_) {}
-      const err = new Error(body && body.error ? body.error : `HTTP ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    return res.json();
+  async function api(path, options = {}) {
+    const headers = { "X-Init-Data": initData };
+    if (options.body) headers["Content-Type"] = "application/json";
+    const res = await fetch(path, { ...options, headers });
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = null; }
+    return { ok: res.ok, status: res.status, data };
   }
 
-  function openBot(param) {
-    if (!state.config.botUsername) return toast("Бот недоступен, попробуйте позже");
-    const link = `https://t.me/${state.config.botUsername}${param ? `?start=${param}` : ""}`;
-    if (tg && tg.openTelegramLink) tg.openTelegramLink(link); else window.open(link, "_blank");
-  }
+  const isOwned = (film) => film.price <= 0 || (S.me && S.me.owned.includes(film.id));
+  const priceText = (film) => (film.price <= 0 ? "Бесплатно" : `${film.price} звёзд`);
 
-  function posterHTML(film, icon) {
-    if (film.hasBanner) return `<img src="/api/banner/${film.id}" alt="" loading="lazy" />`;
-    return `<div class="poster-icon">${icon || I.film}</div>`;
-  }
-
-  function badgeHTML(film) {
-    if (film.vip && film.locked) return `<span class="badge lock">${I.lock} VIP</span>`;
-    if (film.vip) return `<span class="badge vip">${I.crown} VIP</span>`;
-    return `<span class="badge">${film.kind === "video" ? I.play + " Видео" : I.link + " Ссылка"}</span>`;
-  }
-
-  function cardHTML(film) {
-    return `
-      <button class="card" data-id="${film.id}" type="button" aria-label="${esc(film.title)}">
-        <div class="poster">
-          ${posterHTML(film)}
-          ${badgeHTML(film)}
-          <div class="card-body">
-            <div class="card-title">${esc(film.title)}</div>
-            <div class="card-meta"><span class="meta">${I.eye} ${film.views}</span></div>
-          </div>
-        </div>
-      </button>`;
-  }
-
-  // ---------- фильтрация ----------
-  function visibleFilms() {
-    let list = state.films.slice();
-    if (state.filter === "video") list = list.filter((f) => f.kind === "video");
-    if (state.filter === "link") list = list.filter((f) => f.kind === "link");
-    if (state.filter === "vip") list = list.filter((f) => f.vip);
-    if (state.filter === "top") list.sort((a, b) => b.views - a.views);
-    return list;
-  }
-
-  // ---------- экраны ----------
-  function renderHome() {
-    const list = state.searchResults !== null ? state.searchResults : visibleFilms();
-    const searching = state.query.length > 0;
-    let html = "";
-
-    if (searching && state.searchResults && !state.exact && state.searchResults.length) {
-      html += `<div class="did-you-mean">${I.spark}<span>Точного совпадения нет, показаны похожие названия</span></div>`;
-    }
-
-    if (!searching && state.tab === "home" && state.filter === "all" && state.films.length) {
-      const hero = state.films[0];
-      html += `
-        <div class="hero" data-id="${hero.id}" role="button" tabindex="0">
-          ${hero.hasBanner ? `<img src="/api/banner/${hero.id}" alt="" />` : ""}
-          <div class="hero-body">
-            <span class="hero-tag">${I.spark} Новинка</span>
-            <h1>${esc(hero.title)}</h1>
-            <div class="hero-row">
-              <button class="btn btn-red" data-open="${hero.id}" type="button">${I.play} Смотреть</button>
-              <span class="meta">${I.eye} ${hero.views}</span>
-            </div>
-          </div>
-        </div>`;
-    }
-
-    html += `<div class="section-title"><h2>${searching ? "Результаты" : sectionName()}</h2><small>${list.length} шт.</small></div>`;
-
-    if (!state.films.length) {
-      html += `<div class="empty">${I.film}<div>Каталог пока пуст</div></div>`;
-    } else if (!list.length) {
-      html += `<div class="empty">${I.search}<div>Ничего не найдено. Попробуйте другое слово.</div></div>`;
+  function posterNode(film) {
+    const box = document.createElement("div");
+    box.className = "poster";
+    if (film.hasBanner) {
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = `/api/banner/${film.id}`;
+      box.appendChild(img);
     } else {
-      html += `<div class="grid">${list.map(cardHTML).join("")}</div>`;
+      box.textContent = film.title.trim().charAt(0).toUpperCase() || "";
     }
-    view.innerHTML = html;
+    return box;
   }
 
-  function sectionName() {
-    return { all: "Все фильмы", video: "В приложении", link: "По ссылке", vip: "VIP-фильмы", top: "Популярное" }[state.filter] || "Фильмы";
+  function filmCard(film) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "card";
+    card.appendChild(posterNode(film));
+    const title = document.createElement("div");
+    title.className = "card-title";
+    title.textContent = film.title;
+    const meta = document.createElement("div");
+    meta.className = "card-meta" + (film.price > 0 ? " vip" : "");
+    meta.textContent = film.price > 0 && isOwned(film) ? "Открыт" : priceText(film);
+    card.append(title, meta);
+    card.addEventListener("click", () => openFilm(film.id));
+    return card;
   }
 
-  function renderTop() {
-    const list = state.films.slice().sort((a, b) => b.views - a.views).slice(0, 30);
-    view.innerHTML = `
-      <div class="section-title"><h2>Популярное</h2><small>Топ по просмотрам</small></div>
-      ${list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>` : `<div class="empty">Пока пусто</div>`}`;
+  function filmRow(film) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "row";
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    if (film.hasBanner) {
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = `/api/banner/${film.id}`;
+      thumb.appendChild(img);
+    }
+    const body = document.createElement("div");
+    body.className = "row-body";
+    const t = document.createElement("div");
+    t.className = "row-title";
+    t.textContent = film.title;
+    const m = document.createElement("div");
+    m.className = "row-meta";
+    m.textContent = film.kind === "video" ? "В боте и в приложении" : "По ссылке";
+    body.append(t, m);
+    const tag = document.createElement("div");
+    tag.className = "tag";
+    tag.textContent = isOwned(film) ? "Открыт" : priceText(film);
+    row.append(thumb, body, tag);
+    row.addEventListener("click", () => openFilm(film.id));
+    return row;
+  }
+
+  function renderCatalog() {
+    const q = S.query.toLowerCase();
+    const grid = $("grid-catalog");
+    grid.textContent = "";
+    const list = S.films.filter((f) => !q || f.title.toLowerCase().includes(q));
+    if (!list.length) { grid.innerHTML = '<div class="empty">Ничего не найдено</div>'; return; }
+    list.forEach((f) => grid.appendChild(filmCard(f)));
   }
 
   function renderVip() {
-    const plans = state.config.plans || [];
-    const staffNames = { owner: "владелец", admin: "админ", editor: "редактор" };
-    const isStaff = Boolean(staffNames[state.me.role]);
-    const active = state.me.vip || isStaff;
-    const status = isStaff
-      ? `Полный доступ · ${staffNames[state.me.role]}`
-      : state.me.vipUntil ? `Активна до ${state.me.vipUntil}` : "Не активна";
-    const best = 90;
-    view.innerHTML = `
-      <div class="vip-hero">
-        ${I.crown.replace('class="ic sm fill"', 'class="ic crown-big fill"')}
-        <h1>VIP-подписка</h1>
-        <p>Откройте все закрытые фильмы каталога. Оплата Telegram Stars прямо в боте, доступ сразу после оплаты.</p>
-        <ul class="perks">
-          <li>${I.check} Все VIP-фильмы в приложении и в боте</li>
-          <li>${I.check} Доступ сразу после оплаты, без ручной активации</li>
-          <li>${I.check} Продление суммируется с текущим сроком</li>
-        </ul>
-      </div>
-      <div class="panel" style="margin-top:12px">
-        <div class="kv"><span>Ваш статус</span><span>${esc(status)}</span></div>
-        <div class="kv"><span>Оплата</span><span>Telegram Stars</span></div>
-      </div>
-      <div class="plans">
-        ${plans.map((p) => `
-          <button class="plan ${p.days === best ? "best" : ""}" data-plan="${p.days}" type="button">
-            <div>
-              <div class="p-title">${esc(p.title)}${p.days === best ? '<span class="tag-best">Выгодно</span>' : ""}</div>
-              <div class="p-sub">${p.days} дн. · ${active ? "у вас уже открыт доступ" : "оплата в боте"}</div>
-            </div>
-            <div class="p-price">${I.star} ${p.stars}</div>
-          </button>`).join("")}
-      </div>
-      <button class="btn btn-gold btn-block" data-buy="1" type="button" style="margin-top:14px">${I.crown} Оформить в боте</button>`;
+    const box = $("list-vip");
+    box.textContent = "";
+    const list = S.films.filter((f) => f.price > 0);
+    if (!list.length) { box.innerHTML = '<div class="empty">VIP-фильмов пока нет</div>'; return; }
+    list.forEach((f) => box.appendChild(filmRow(f)));
   }
 
-  function renderProfile() {
-    const me = state.me;
-    const roleName = { owner: "Владелец", admin: "Админ", editor: "Редактор", user: "Пользователь" }[me.role] || "Пользователь";
-    const name = me.guest ? "Гость" : "Вы в Telegram";
-    view.innerHTML = `
-      <div class="profile">
-        <div class="panel">
-          <div class="row">
-            <div class="avatar">${I.web}</div>
-            <div>
-              <div style="font-weight:800;font-size:17px">${esc(name)}</div>
-              <div class="meta" style="margin-top:3px">${me.guest ? "Откройте приложение из Telegram" : `ID ${esc(me.id)}`}</div>
-            </div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="kv"><span>Роль</span><span>${roleName}</span></div>
-          <div class="kv"><span>VIP</span><span>${me.vip ? (me.vipUntil ? "до " + esc(me.vipUntil) : "открыт") : "нет"}</span></div>
-          <div class="kv"><span>Фильмов в каталоге</span><span>${state.films.length}</span></div>
-        </div>
-        <button class="btn btn-blue btn-block" data-go="vip" type="button">${I.crown} Управление VIP</button>
-        <button class="btn btn-ghost btn-block" data-bot="1" type="button">${I.bot} Открыть бота</button>
-      </div>`;
+  function renderBalance() {
+    $("balance").textContent = S.me ? S.me.balance : "0";
+    const topBox = $("topups");
+    topBox.textContent = "";
+    (S.config ? S.config.topups : []).forEach((n) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pill";
+      b.textContent = `${n} звёзд`;
+      b.addEventListener("click", () => topUp(n));
+      topBox.appendChild(b);
+    });
+    const owned = $("list-owned");
+    owned.textContent = "";
+    const list = S.films.filter((f) => S.me && S.me.owned.includes(f.id));
+    if (!list.length) { owned.innerHTML = '<div class="empty">Пока ничего не куплено</div>'; return; }
+    list.forEach((f) => owned.appendChild(filmRow(f)));
   }
 
-  function setTab(tab) {
-    state.tab = tab;
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === tab));
-    document.querySelector("#chips").style.display = tab === "home" ? "flex" : "none";
-    document.querySelector("#searchBox").style.display = tab === "home" || tab === "top" ? "flex" : "none";
-    if (tab === "home") renderHome();
-    if (tab === "top") renderTop();
-    if (tab === "vip") renderVip();
-    if (tab === "profile") renderProfile();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    haptic("light");
+  function showView(name) {
+    S.view = name;
+    ["catalog", "vip", "balance"].forEach((v) => $(`view-${v}`).classList.toggle("hidden", v !== name));
+    document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
+    window.scrollTo(0, 0);
   }
 
-  // ---------- плеер ----------
-  async function openFilm(id) {
-    const film = state.films.find((f) => f.id === Number(id));
-    if (!film) return toast("Фильм не найден");
-    haptic("medium");
+  // ---------- экран фильма ----------
+  function openFilm(id) {
+    const film = S.films.find((f) => f.id === id);
+    if (!film) return;
+    S.film = film;
+    $("sheet-title").textContent = film.title;
+    $("sheet-meta").textContent = `${film.kind === "video" ? "Видео" : "Ссылка"} · ${priceText(film)}`;
+    $("player").textContent = "";
+    const empty = document.createElement("div");
+    empty.className = "player-empty";
+    empty.textContent = isOwned(film) ? "Нажмите «Смотреть»" : "Фильм закрыт";
+    $("player").appendChild(empty);
+    $("open-external").classList.add("hidden");
+    $("note").textContent = "";
+    $("sheet").classList.add("open");
+    history.replaceState(null, "", `?film=${film.id}`);
+    setAction();
+  }
 
-    if (film.kind === "link") {
-      if (film.locked) return showLocked(film);
-      if (film.url) (tg && tg.openLink ? tg.openLink(film.url) : window.open(film.url, "_blank"));
+  function closeFilm() {
+    $("sheet").classList.remove("open");
+    $("player").textContent = "";
+    history.replaceState(null, "", location.pathname);
+    S.film = null;
+  }
+
+  function setAction() {
+    const film = S.film;
+    const btn = $("action");
+    if (!film) return;
+    if (isOwned(film)) {
+      btn.textContent = "Смотреть";
+      btn.disabled = false;
+      btn.onclick = play;
+    } else {
+      btn.textContent = `Купить за ${film.price} звёзд`;
+      btn.disabled = !initData;
+      btn.onclick = buy;
+      if (!initData) $("note").textContent = "Покупка доступна в Telegram.";
+    }
+  }
+
+  async function play() {
+    const film = S.film;
+    if (!initData) { $("note").textContent = "Откройте приложение в Telegram, чтобы смотреть."; return; }
+    const btn = $("action");
+    btn.disabled = true;
+    btn.textContent = "Загрузка…";
+    const r = await api(`/api/films/${film.id}/play`, { method: "POST" });
+    btn.disabled = false;
+    btn.textContent = "Смотреть";
+    if (!r.ok) {
+      const msg = {
+        locked: "Фильм закрыт. Откройте его за звёзды.",
+        too_large: "Файл больше 20 МБ, в приложении его не открыть. Смотрите в боте.",
+        media: "Не удалось загрузить видео. Попробуйте позже.",
+        auth: "Откройте приложение в Telegram.",
+      }[r.data && r.data.error] || "Ошибка. Попробуйте позже.";
+      $("note").textContent = msg;
       return;
     }
-    if (film.locked) return showLocked(film);
-
-    const ov = $("#player");
-    $("#ovTitle").textContent = film.title;
-    const videoSrc = `/api/video/${film.id}${initData ? `?init=${encodeURIComponent(initData)}` : ""}`;
-    $("#ovBody").innerHTML = `
-      <video class="player" controls playsinline preload="metadata" src="${videoSrc}"></video>
-      <div id="playErr"></div>
-      <div class="ov-info">
-        <h2>${esc(film.title)}</h2>
-        <div class="ov-sub"><span class="meta">${I.eye} ${film.views}</span><span class="meta">${I.play} Видео в приложении</span></div>
-        <div id="similar"></div>
-      </div>`;
-    ov.hidden = false;
-
-    const video = $("#ovBody video");
-    video.addEventListener("error", () => showPlayError(film));
-    video.play().catch(() => {});
-    loadSimilar(film);
-  }
-
-  function showPlayError(film) {
-    const box = $("#playErr");
-    if (!box) return;
-    box.innerHTML = `
-      <div class="notice" style="margin-top:12px">
-        ${I.wifi}
-        <div style="font-weight:800">Не получилось открыть видео здесь</div>
-        <p>Файлы больше 20 МБ Telegram не отдаёт веб-приложению. Смотрите этот фильм в боте.</p>
-        <button class="btn btn-red btn-block" data-bot-film="${film.id}" type="button">${I.play} Смотреть в боте</button>
-      </div>`;
-  }
-
-  function showLocked(film) {
-    $("#ovTitle").textContent = film.title;
-    $("#ovBody").innerHTML = `
-      <div class="notice" style="margin-top:20px">
-        ${I.lock.replace('class="ic sm"', 'class="ic" style="width:44px;height:44px;color:#f5c04a"')}
-        <div style="font-weight:800;font-size:17px">Фильм только для VIP</div>
-        <p>Оформите подписку за Telegram Stars в боте. Доступ откроется сразу после оплаты.</p>
-        <button class="btn btn-gold btn-block" data-go="vip-close" type="button">${I.crown} Оформить VIP</button>
-      </div>`;
-    $("#player").hidden = false;
-  }
-
-  async function loadSimilar(film) {
-    try {
-      const data = await api(`/api/search?q=${encodeURIComponent(film.title)}`);
-      const list = data.results.filter((f) => f.id !== film.id).slice(0, 6);
-      const box = $("#similar");
-      if (!box || !list.length) return;
-      box.innerHTML = `
-        <div class="sub-title">Похожие</div>
-        <div class="ov-grid">
-          ${list.map((f) => `
-            <button class="mini-card" data-id="${f.id}" type="button">
-              <div class="poster">${posterHTML(f)}${badgeHTML(f)}</div>
-              <div class="card-title">${esc(f.title)}</div>
-            </button>`).join("")}
-        </div>`;
-    } catch (_) {}
-  }
-
-  function closePlayer() {
-    const ov = $("#player");
-    ov.hidden = true;
-    const v = $("#ovBody video");
-    if (v) { v.pause(); v.removeAttribute("src"); v.load(); }
-    $("#ovBody").innerHTML = "";
-  }
-
-  // ---------- поиск ----------
-  let searchTimer = null;
-  async function runSearch(q) {
-    state.query = q;
-    if (!q) {
-      state.searchResults = null;
-      return renderCurrent();
-    }
-    try {
-      const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
-      if (state.query !== q) return; // уже ввели другое
-      state.searchResults = data.results;
-      state.exact = data.exact;
-    } catch (_) {
-      state.searchResults = rankLocal(q);
-      state.exact = true;
-    }
-    renderCurrent();
-  }
-
-  // запасной локальный поиск, если API недоступен
-  function rankLocal(q) {
-    const norm = (s) => s.toLowerCase().replace(/ё/g, "е").replace(/[^\p{L}\p{N}\s]+/gu, " ").trim();
-    const needle = norm(q);
-    return state.films.filter((f) => norm(f.title).includes(needle));
-  }
-
-  function renderCurrent() {
-    if (state.tab === "home") renderHome();
-    else if (state.tab === "top") renderTop();
-  }
-
-  // ---------- загрузка данных ----------
-  async function loadAll() {
-    view.innerHTML = `<div class="grid">${'<div class="skeleton"></div>'.repeat(4)}</div>`;
-    try {
-      const [config, me, films] = await Promise.all([api("/api/config"), api("/api/me"), api("/api/films")]);
-      state.config = config;
-      state.me = me;
-      state.films = films;
-      applyStatus();
-      setTab("home");
-    } catch (e) {
-      view.innerHTML = `
-        <div class="empty">${I.wifi}<div>Не удалось загрузить каталог</div>
-        <button class="btn btn-ghost" id="retry" type="button" style="margin-top:14px">Повторить</button></div>`;
-      $("#retry").addEventListener("click", loadAll);
+    const box = $("player");
+    box.textContent = "";
+    if (r.data.kind === "video") {
+      const v = document.createElement("video");
+      v.controls = true;
+      v.playsInline = true;
+      v.preload = "metadata";
+      v.src = r.data.src;
+      box.appendChild(v);
+    } else {
+      const f = document.createElement("iframe");
+      f.src = r.data.src;
+      f.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
+      f.allowFullscreen = true;
+      box.appendChild(f);
+      $("open-external").classList.remove("hidden");
+      $("open-external").onclick = () => (tg ? tg.openLink(r.data.url) : window.open(r.data.url, "_blank"));
+      $("note").textContent = "Если видео не открывается здесь, откройте его в браузере.";
     }
   }
 
-  function applyStatus() {
-    const pill = $("#statusPill");
-    const me = state.me;
-    if (me.guest) { pill.textContent = "Гость"; pill.className = "status-pill"; }
-    else if (me.role !== "user") { pill.textContent = me.role === "owner" ? "Владелец" : me.role === "admin" ? "Админ" : "Редактор"; pill.className = "status-pill vip"; }
-    else if (me.vip) { pill.innerHTML = `${I.crown} VIP`; pill.className = "status-pill vip"; }
-    else { pill.textContent = "Обычный"; pill.className = "status-pill"; }
-    $("#brandSub").textContent = `${state.films.length} фильмов в каталоге`;
+  async function buy() {
+    const film = S.film;
+    const btn = $("action");
+    btn.disabled = true;
+    const r = await api(`/api/films/${film.id}/buy`, { method: "POST" });
+    if (r.ok && r.data.ok) {
+      toast("Фильм открыт");
+      await refreshMe();
+      setAction();
+      return;
+    }
+    if (r.ok && r.data.invoice) {
+      payInvoice(r.data.invoice);
+    } else {
+      toast("Не удалось создать оплату");
+    }
+    btn.disabled = false;
+  }
+
+  async function topUp(amount) {
+    if (!initData) { toast("Пополнение доступно в Telegram"); return; }
+    const r = await api("/api/topup", { method: "POST", body: JSON.stringify({ amount }) });
+    if (r.ok && r.data.invoice) payInvoice(r.data.invoice);
+    else toast("Не удалось создать оплату");
+  }
+
+  function payInvoice(link) {
+    if (!tg || !tg.openInvoice) { tg ? tg.openLink(link) : window.open(link, "_blank"); return; }
+    tg.openInvoice(link, async (status) => {
+      if (status === "paid") {
+        toast("Оплата прошла");
+        // уведомление об оплате приходит боту; подождём и обновим баланс
+        for (let i = 0; i < 6; i++) {
+          await new Promise((res) => setTimeout(res, 1000));
+          await refreshMe();
+          if (S.film) setAction();
+        }
+      } else if (status === "failed") {
+        toast("Оплата не прошла");
+      }
+    });
+  }
+
+  async function refreshMe() {
+    const r = await api("/api/me");
+    if (r.ok) S.me = r.data;
+    renderBalance();
+    renderCatalog();
+    renderVip();
+  }
+
+  async function loadFilms() {
+    const r = await fetch("/api/films");
+    S.films = r.ok ? await r.json() : [];
+    renderCatalog();
+    renderVip();
+    renderBalance();
   }
 
   // ---------- события ----------
-  document.addEventListener("click", (e) => {
-    const t = e.target.closest("button, [data-id], [data-open], [data-go], [data-plan], [data-buy], [data-bot], [data-bot-film]");
-    if (!t) return;
+  document.querySelectorAll(".nav button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+  $("search").addEventListener("input", (e) => { S.query = e.target.value.trim(); renderCatalog(); });
+  $("back").addEventListener("click", closeFilm);
 
-    if (t.dataset.bot) return openBot();
-    if (t.dataset.botFilm) return openBot(`film_${t.dataset.botFilm}`);
-    if (t.dataset.buy) return openBot("vip");
-    if (t.dataset.plan) return openBot("vip");
-    if (t.dataset.go === "vip") { closePlayer(); return setTab("vip"); }
-    if (t.dataset.go === "vip-close") { closePlayer(); return setTab("vip"); }
-    if (t.dataset.open) return openFilm(t.dataset.open);
-    if (t.dataset.id && t.closest("#similar")) return openFilm(t.dataset.id);
-    if (t.dataset.id && t.classList.contains("card")) return openFilm(t.dataset.id);
-    if (t.classList.contains("hero") || (t.dataset.id && t.classList.contains("hero"))) return openFilm(t.dataset.id);
-    if (t.classList.contains("tab")) return setTab(t.dataset.tab);
-    if (t.classList.contains("chip")) {
-      state.filter = t.dataset.filter;
-      document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === t));
-      if (state.tab !== "home") setTab("home");
-      renderHome();
-      haptic("light");
+  (async () => {
+    try {
+      const cfgRes = await fetch("/api/config");
+      S.config = await cfgRes.json();
+      if (S.config.background) {
+        document.body.style.backgroundImage = `url("${S.config.background}")`;
+      }
+      await loadFilms();
+      if (initData) await refreshMe();
+      const id = Number(new URLSearchParams(location.search).get("film"));
+      if (id && S.films.some((f) => f.id === id)) openFilm(id);
+    } catch (e) {
+      toast("Не удалось загрузить каталог");
     }
-  });
-
-  $("#ovClose").addEventListener("click", closePlayer);
-  $("#player").addEventListener("keydown", (e) => { if (e.key === "Escape") closePlayer(); });
-
-  const q = $("#q");
-  q.addEventListener("input", () => {
-    $("#searchBox").classList.toggle("has-text", q.value.length > 0);
-    clearTimeout(searchTimer);
-    const value = q.value.trim();
-    searchTimer = setTimeout(() => runSearch(value), 220);
-  });
-  $("#clearQ").addEventListener("click", () => {
-    q.value = "";
-    $("#searchBox").classList.remove("has-text");
-    runSearch("");
-    q.focus();
-  });
-  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); q.blur(); } });
-
-  document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
-
-  loadAll();
+  })();
 })();
 </script>
 </body>

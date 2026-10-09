@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-Telegram-бот каталога фильмов + Mini App. Весь проект запускается одним файлом:
+Telegram-бот каталога фильмов, VIP за Telegram Stars и Mini App.
+Весь проект запускается одним файлом: python main.py
 
-    python main.py
+Фильмы:
+  video — загруженные в бот. Смотрятся в боте и в Mini App.
+  link  — по ссылке. Смотрятся только в Mini App.
+  price 0 — бесплатно. price > 0 — VIP, открывается за звёзды или с баланса.
 
-Возможности:
-  * каталог, популярное, умный поиск (опечатки, части слов, похожие названия);
-  * фильмы: «видео в боте» или «ссылка»; можно пометить фильм как VIP;
-  * VIP-подписка за Telegram Stars (встроенная оплата, без платёжного провайдера);
-  * роли: владелец (OWNER_ID), админ, редактор, пользователь;
-  * Mini App (index.html): просмотр видео прямо в приложении, поиск, VIP-статус.
+Роли:
+  owner  — владелец (OWNER_ID, по умолчанию 7745681987). Назначает админов. Получает звёзды.
+  admin  — управляет любыми фильмами, назначает редакторов, делает возвраты.
+  editor — добавляет фильмы, правит и удаляет только свои.
+  user   — смотрит каталог, покупает VIP.
 
-Роли и VIP хранятся в SQLite, выдаются кнопками в боте без перезапуска.
+Звёзды: оплата через Telegram Stars (XTR). Звёзды поступают на баланс бота,
+владелец видит его в админ-панели (Статистика) и выводит через Fragment/BotFather.
 """
 
 from __future__ import annotations
@@ -28,14 +32,12 @@ import os
 import re
 import signal
 import sqlite3
+import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import parse_qsl
 
-import aiohttp
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -65,31 +67,17 @@ from aiohttp import web
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_HTML = BASE_DIR / "index.html"
 DEFAULT_OWNER_ID = 7745681987
+DEFAULT_BACKGROUND = "https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg"
+TOPUP_OPTIONS = (50, 100, 250, 500)
+MAX_PRICE = 10000
+CATALOG_PAGE = 10
+ADMIN_PAGE = 8
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
 DEEP_LINK_RE = re.compile(r"^film_(\d+)$")
-CATALOG_PAGE = 8
-ADMIN_PAGE = 8
-TZ_LOCAL = timezone(timedelta(hours=5), "Екатеринбург")  # UTC+5, без перехода на летнее время
-
-# VIP-тарифы: дни -> (название, цена в Telegram Stars)
-VIP_PLANS: dict[int, tuple[str, int]] = {
-    30: ("1 месяц", 150),
-    90: ("3 месяца", 390),
-    365: ("1 год", 1290),
-}
-
-# Иконки кнопок: если в EMOJI_IDS задан custom_emoji_id, показывается премиум-эмодзи Telegram,
-# иначе — обычный эмодзи из ICON_FALLBACK.
-ICON_FALLBACK = {
-    "catalog": "🎬", "fire": "🔥", "search": "🔍", "vip": "💎", "app": "📱", "help": "ℹ️",
-    "admin": "⚙️", "films": "🎞", "team": "👥", "stats": "📊", "add": "➕", "back": "⬅️",
-    "home": "🏠", "play": "▶️", "link": "🔗", "lock": "🔒", "eye": "👁", "edit": "✏️",
-    "pause": "⏸", "trash": "🗑", "ok": "✅", "no": "❌", "gift": "🎁", "spider": "🕷",
-    "web": "🕸", "star": "⭐", "next": "▶️", "prev": "◀️", "similar": "🧩",
-}
+TIKTOK_RE = re.compile(r"tiktok\.com/(?:@[^/]+/video/|v/|embed/(?:v2/)?)(\d+)")
+YOUTUBE_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]{6,})")
 
 log = logging.getLogger("film-bot")
-EMOJI_IDS: dict[str, str] = {}  # заполняется из переменной EMOJI_IDS
 
 
 # ============================================================================
@@ -100,17 +88,21 @@ class Config:
     bot_token: str
     owner_id: int
     initial_admins: frozenset[int]
-    mode: str  # webhook | polling
+    mode: str
     public_url: str | None
     port: int
     webhook_path: str
     webhook_secret: str
     db_path: str
-    emoji_ids: dict[str, str]
+    background_url: str
 
     @property
     def webapp_url(self) -> str | None:
         return f"{self.public_url}/app" if self.public_url else None
+
+    @property
+    def media_dir(self) -> Path:
+        return Path(self.db_path).parent / "media"
 
 
 def _parse_ids(raw: str, name: str) -> set[int]:
@@ -129,12 +121,9 @@ def load_config(env: Any = os.environ) -> Config:
     if not token:
         raise SystemExit("BOT_TOKEN не задан: добавьте его в переменные окружения")
 
-    owner_raw = (env.get("OWNER_ID") or "").strip() or str(DEFAULT_OWNER_ID)
-    owner_ids = _parse_ids(owner_raw, "OWNER_ID")
+    owner_ids = _parse_ids((env.get("OWNER_ID") or "").strip() or str(DEFAULT_OWNER_ID), "OWNER_ID")
     if len(owner_ids) != 1:
         raise SystemExit("OWNER_ID должен содержать ровно один Telegram ID")
-
-    initial_admins = _parse_ids(env.get("ADMIN_IDS") or "", "ADMIN_IDS")
 
     mode = (env.get("BOT_MODE") or "webhook").strip().lower()
     if mode not in ("webhook", "polling"):
@@ -145,9 +134,7 @@ def load_config(env: Any = os.environ) -> Config:
         if not public_url:
             raise SystemExit("PUBLIC_URL обязателен в режиме webhook")
         if not public_url.startswith("https://"):
-            raise SystemExit("PUBLIC_URL должен начинаться с https:// (требование Telegram)")
-
-    port = int(env.get("PORT") or 3000)
+            raise SystemExit("PUBLIC_URL должен начинаться с https://")
 
     webhook_path = (env.get("WEBHOOK_PATH") or "/webhook").strip()
     if not webhook_path.startswith("/"):
@@ -159,25 +146,17 @@ def load_config(env: Any = os.environ) -> Config:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", secret):
         raise SystemExit("WEBHOOK_SECRET: допустимы только латиница, цифры, _ и -")
 
-    db_path = (env.get("DB_PATH") or "").strip() or str(BASE_DIR / "data" / "film.db")
-
-    emoji_raw = (env.get("EMOJI_IDS") or "").strip()
-    try:
-        emoji_ids = {str(k): str(v) for k, v in json.loads(emoji_raw).items()} if emoji_raw else {}
-    except (json.JSONDecodeError, AttributeError) as err:
-        raise SystemExit(f"EMOJI_IDS должен быть JSON-объектом: {err}") from err
-
     return Config(
         bot_token=token,
         owner_id=next(iter(owner_ids)),
-        initial_admins=frozenset(initial_admins),
+        initial_admins=frozenset(_parse_ids(env.get("ADMIN_IDS") or "", "ADMIN_IDS")),
         mode=mode,
         public_url=public_url,
-        port=port,
+        port=int(env.get("PORT") or 3000),
         webhook_path=webhook_path,
         webhook_secret=secret,
-        db_path=db_path,
-        emoji_ids=emoji_ids,
+        db_path=(env.get("DB_PATH") or "").strip() or str(BASE_DIR / "data" / "film.db"),
+        background_url=(env.get("BACKGROUND_URL") or "").strip() or DEFAULT_BACKGROUND,
     )
 
 
@@ -186,7 +165,7 @@ def load_config(env: Any = os.environ) -> Config:
 # ============================================================================
 OWNER, ADMIN, EDITOR, USER = "owner", "admin", "editor", "user"
 RANK = {USER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3}
-ROLE_TITLES = {OWNER: "👑 Владелец", ADMIN: "🛡 Админ", EDITOR: "✏️ Редактор", USER: "Пользователь"}
+ROLE_TITLES = {OWNER: "Владелец", ADMIN: "Админ", EDITOR: "Редактор", USER: "Пользователь"}
 
 
 def at_least(role: str, minimum: str) -> bool:
@@ -194,17 +173,17 @@ def at_least(role: str, minimum: str) -> bool:
 
 
 def can_manage_film(role: str, user_id: int, film: dict) -> bool:
-    """Админ+ — любые фильмы; редактор — только свои."""
+    """Админ+ — любые фильмы. Редактор — только свои."""
     if at_least(role, ADMIN):
         return True
     return role == EDITOR and film.get("owner_id") == user_id
 
 
-def can_change_role(actor_role: str, target_role: str, new_role: str) -> bool:
-    """Назначать и снимать можно только роли строго ниже своей; владельца никто не меняет."""
-    if target_role == OWNER or new_role == OWNER:
+def can_change_role(actor: str, target: str, new: str) -> bool:
+    """Назначать и снимать можно только роли строго ниже своей. Владельца не трогает никто."""
+    if target == OWNER or new == OWNER:
         return False
-    return RANK[actor_role] > RANK[target_role] and RANK[actor_role] > RANK[new_role]
+    return RANK[actor] > RANK[target] and RANK[actor] > RANK[new]
 
 
 # ============================================================================
@@ -219,7 +198,7 @@ CREATE TABLE IF NOT EXISTS films (
     video_file_id  TEXT,
     photo_file_id  TEXT,
     owner_id       INTEGER,
-    is_vip         INTEGER NOT NULL DEFAULT 0,
+    price          INTEGER NOT NULL DEFAULT 0 CHECK (price >= 0),
     is_active      INTEGER NOT NULL DEFAULT 1,
     views          INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -233,7 +212,7 @@ CREATE TABLE IF NOT EXISTS users (
     username    TEXT,
     first_name  TEXT,
     role        TEXT    NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'editor', 'admin')),
-    vip_until   TEXT,
+    balance     INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
     added_by    INTEGER,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     last_seen   TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -243,11 +222,15 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
 CREATE TABLE IF NOT EXISTS payments (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL,
-    days        INTEGER NOT NULL,
-    stars       INTEGER NOT NULL,
-    charge_id   TEXT    NOT NULL UNIQUE,
+    kind        TEXT    NOT NULL CHECK (kind IN ('film', 'topup')),
+    film_id     INTEGER,
+    amount      INTEGER NOT NULL CHECK (amount > 0),
+    source      TEXT    NOT NULL CHECK (source IN ('stars', 'balance')),
+    charge_id   TEXT    UNIQUE,
+    refunded    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_payments_user ON payments (user_id, kind, film_id);
 """
 
 
@@ -255,25 +238,20 @@ class Database:
     def __init__(self, path: str) -> None:
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.executescript(SCHEMA)
-        self._add_missing_columns()
-        self.conn.commit()
-
-    def _add_missing_columns(self) -> None:
-        """Миграции для баз, созданных старыми версиями бота."""
-        def cols(table: str) -> set[str]:
-            return {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
-
-        if "owner_id" not in cols("films"):
-            self.conn.execute("ALTER TABLE films ADD COLUMN owner_id INTEGER")
-        if "is_vip" not in cols("films"):
-            self.conn.execute("ALTER TABLE films ADD COLUMN is_vip INTEGER NOT NULL DEFAULT 0")
-        if "vip_until" not in cols("users"):
-            self.conn.execute("ALTER TABLE users ADD COLUMN vip_until TEXT")
+        # миграции для баз, созданных старыми версиями
+        for table, column, ddl in (
+            ("films", "owner_id", "ALTER TABLE films ADD COLUMN owner_id INTEGER"),
+            ("films", "price", "ALTER TABLE films ADD COLUMN price INTEGER NOT NULL DEFAULT 0"),
+            ("users", "balance", "ALTER TABLE users ADD COLUMN balance INTEGER NOT NULL DEFAULT 0"),
+        ):
+            cols = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            if column not in cols:
+                self.conn.execute(ddl)
 
     def close(self) -> None:
         self.conn.close()
@@ -286,11 +264,9 @@ class Database:
         return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
 
     def _exec(self, sql: str, params: tuple = ()) -> int:
-        cur = self.conn.execute(sql, params)
-        self.conn.commit()
-        return cur.rowcount
+        return self.conn.execute(sql, params).rowcount
 
-    # ---- пользователи, роли, VIP ----
+    # ---- пользователи ----
     def touch_user(self, tg_id: int, username: str | None, first_name: str | None) -> None:
         self._exec(
             """INSERT INTO users (tg_id, username, first_name) VALUES (?, ?, ?)
@@ -299,12 +275,12 @@ class Database:
             (tg_id, username, first_name),
         )
 
-    def get_role(self, tg_id: int) -> str:
-        row = self._one("SELECT role FROM users WHERE tg_id = ?", (tg_id,))
-        return row["role"] if row else USER
-
     def get_user(self, tg_id: int) -> dict | None:
         return self._one("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
+
+    def get_role(self, tg_id: int) -> str:
+        row = self.get_user(tg_id)
+        return row["role"] if row else USER
 
     def set_role(self, tg_id: int, role: str, added_by: int | None) -> None:
         self._exec(
@@ -316,53 +292,27 @@ class Database:
     def staff(self) -> list[dict]:
         return self._all("SELECT * FROM users WHERE role IN ('admin', 'editor') ORDER BY role, tg_id")
 
-    def is_vip(self, tg_id: int) -> bool:
-        return self._one(
-            "SELECT 1 AS ok FROM users WHERE tg_id = ? AND vip_until > datetime('now')", (tg_id,)
-        ) is not None
-
-    def vip_until(self, tg_id: int) -> str | None:
-        row = self._one(
-            "SELECT vip_until FROM users WHERE tg_id = ? AND vip_until > datetime('now')", (tg_id,)
-        )
-        return row["vip_until"] if row else None
-
-    def grant_vip(self, tg_id: int, days: int) -> str | None:
-        """Продлевает VIP: от текущего окончания, если оно в будущем, иначе от текущего момента."""
-        self._exec("INSERT OR IGNORE INTO users (tg_id) VALUES (?)", (tg_id,))
-        self._exec(
-            """UPDATE users SET vip_until = datetime(
-                   CASE WHEN vip_until IS NOT NULL AND vip_until > datetime('now')
-                        THEN vip_until ELSE datetime('now') END, ?)
-               WHERE tg_id = ?""",
-            (f"+{int(days)} days", tg_id),
-        )
-        return self.vip_until(tg_id)
-
-    def record_payment(self, user_id: int, days: int, stars: int, charge_id: str) -> bool:
-        """True, если платёж новый (защита от повторной обработки)."""
-        return self._exec(
-            "INSERT OR IGNORE INTO payments (user_id, days, stars, charge_id) VALUES (?, ?, ?, ?)",
-            (user_id, days, stars, charge_id),
-        ) > 0
+    def balance(self, tg_id: int) -> int:
+        row = self._one("SELECT balance FROM users WHERE tg_id = ?", (tg_id,))
+        return row["balance"] if row else 0
 
     # ---- фильмы ----
-    def create_film(self, *, title: str, kind: str, owner_id: int, is_vip: bool = False,
+    def create_film(self, *, title: str, kind: str, owner_id: int, price: int,
                     url: str | None = None, video_file_id: str | None = None,
                     photo_file_id: str | None = None) -> int:
         cur = self.conn.execute(
-            """INSERT INTO films (title, kind, url, video_file_id, photo_file_id, owner_id, is_vip)
+            """INSERT INTO films (title, kind, url, video_file_id, photo_file_id, owner_id, price)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (title, kind, url, video_file_id, photo_file_id, owner_id, 1 if is_vip else 0),
+            (title, kind, url, video_file_id, photo_file_id, owner_id, price),
         )
-        self.conn.commit()
         return int(cur.lastrowid)
 
     def get_film(self, film_id: int) -> dict | None:
         return self._one("SELECT * FROM films WHERE id = ?", (film_id,))
 
     @staticmethod
-    def _where(active: bool | None, owner_id: int | None) -> tuple[str, list]:
+    def _where(active: bool | None = None, owner_id: int | None = None, search: str | None = None,
+               vip: bool | None = None) -> tuple[str, list]:
         clauses, params = [], []
         if active is not None:
             clauses.append("is_active = ?")
@@ -370,15 +320,19 @@ class Database:
         if owner_id is not None:
             clauses.append("owner_id = ?")
             params.append(owner_id)
+        if search:
+            clauses.append("title LIKE ?")
+            params.append(f"%{search}%")
+        if vip is not None:
+            clauses.append("price > 0" if vip else "price = 0")
         return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
-    def count_films(self, *, active: bool | None = None, owner_id: int | None = None) -> int:
-        where, params = self._where(active, owner_id)
+    def count_films(self, **kw: Any) -> int:
+        where, params = self._where(**kw)
         return self._one(f"SELECT COUNT(*) AS n FROM films{where}", tuple(params))["n"]
 
-    def list_films(self, *, active: bool | None = None, owner_id: int | None = None,
-                   top: bool = False, limit: int = 10, offset: int = 0) -> list[dict]:
-        where, params = self._where(active, owner_id)
+    def list_films(self, *, top: bool = False, limit: int = 10, offset: int = 0, **kw: Any) -> list[dict]:
+        where, params = self._where(**kw)
         order = "views DESC, id DESC" if top else "id DESC"
         return self._all(
             f"SELECT * FROM films{where} ORDER BY {order} LIMIT ? OFFSET ?",
@@ -386,7 +340,7 @@ class Database:
         )
 
     def update_film(self, film_id: int, **fields: Any) -> bool:
-        allowed = {"title", "url", "is_active", "is_vip"}
+        allowed = ("title", "url", "is_active", "price")
         items = [(k, v) for k, v in fields.items() if k in allowed]
         if not items:
             return False
@@ -399,152 +353,252 @@ class Database:
     def add_view(self, film_id: int) -> None:
         self._exec("UPDATE films SET views = views + 1 WHERE id = ?", (film_id,))
 
+    # ---- платежи и баланс ----
+    def owns(self, user_id: int, film_id: int) -> bool:
+        return self._one(
+            "SELECT 1 AS ok FROM payments WHERE user_id = ? AND film_id = ? AND kind = 'film' AND refunded = 0 LIMIT 1",
+            (user_id, film_id),
+        ) is not None
+
+    def owned_film_ids(self, user_id: int) -> list[int]:
+        rows = self._all(
+            "SELECT DISTINCT film_id FROM payments WHERE user_id = ? AND kind = 'film' AND refunded = 0",
+            (user_id,),
+        )
+        return [r["film_id"] for r in rows]
+
+    def pay_film_with_balance(self, user_id: int, film: dict) -> bool:
+        """Списывает звёзды с баланса и открывает фильм. Атомарно."""
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._one("SELECT balance FROM users WHERE tg_id = ?", (user_id,))
+            if not row or row["balance"] < film["price"] or self.owns(user_id, film["id"]):
+                self.conn.execute("ROLLBACK")
+                return False
+            self.conn.execute("UPDATE users SET balance = balance - ? WHERE tg_id = ?", (film["price"], user_id))
+            self.conn.execute(
+                "INSERT INTO payments (user_id, kind, film_id, amount, source) VALUES (?, 'film', ?, ?, 'balance')",
+                (user_id, film["id"], film["price"]),
+            )
+            self.conn.execute("COMMIT")
+            return True
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
+
+    def record_stars_payment(self, user_id: int, kind: str, film_id: int | None,
+                             amount: int, charge_id: str) -> bool:
+        """Записывает оплату Stars. Повторный charge_id игнорируется (идемпотентность)."""
+        self.touch_user(user_id, None, None)
+        if self._one("SELECT 1 AS ok FROM payments WHERE charge_id = ?", (charge_id,)):
+            return False
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute(
+                """INSERT INTO payments (user_id, kind, film_id, amount, source, charge_id)
+                   VALUES (?, ?, ?, ?, 'stars', ?)""",
+                (user_id, kind, film_id, amount, charge_id),
+            )
+            if kind == "topup":
+                self.conn.execute("UPDATE users SET balance = balance + ? WHERE tg_id = ?", (amount, user_id))
+            self.conn.execute("COMMIT")
+            return True
+        except sqlite3.IntegrityError:
+            self.conn.execute("ROLLBACK")
+            return False
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
+
+    def get_payment(self, payment_id: int) -> dict | None:
+        return self._one("SELECT * FROM payments WHERE id = ?", (payment_id,))
+
+    def refund_payment(self, payment_id: int) -> str:
+        """Помечает платёж возвращённым. Для пополнения списывает баланс. Возвращает 'ok' или причину."""
+        p = self.get_payment(payment_id)
+        if not p or p["refunded"] or p["source"] != "stars":
+            return "not_refundable"
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            if p["kind"] == "topup":
+                if self.balance(p["user_id"]) < p["amount"]:
+                    self.conn.execute("ROLLBACK")
+                    return "low_balance"
+                self.conn.execute("UPDATE users SET balance = balance - ? WHERE tg_id = ?", (p["amount"], p["user_id"]))
+            self.conn.execute("UPDATE payments SET refunded = 1 WHERE id = ?", (payment_id,))
+            self.conn.execute("COMMIT")
+            return "ok"
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
+
+    def list_sales(self, limit: int = 10, offset: int = 0) -> list[dict]:
+        return self._all(
+            """SELECT p.*, f.title AS film_title FROM payments p
+               LEFT JOIN films f ON f.id = p.film_id
+               WHERE p.source = 'stars' AND p.refunded = 0
+               ORDER BY p.id DESC LIMIT ? OFFSET ?""",
+            (limit, offset),
+        )
+
+    def count_sales(self) -> int:
+        return self._one("SELECT COUNT(*) AS n FROM payments WHERE source = 'stars' AND refunded = 0")["n"]
+
     def stats(self) -> dict:
-        row = self._one(
-            """SELECT COUNT(*) AS films, COALESCE(SUM(is_active), 0) AS active,
-                      COALESCE(SUM(is_vip), 0) AS vip, COALESCE(SUM(views), 0) AS views FROM films"""
+        s = self._one(
+            "SELECT COUNT(*) AS films, COALESCE(SUM(is_active), 0) AS active, "
+            "COALESCE(SUM(views), 0) AS views FROM films"
         ) or {}
-        row["users"] = self._one("SELECT COUNT(*) AS n FROM users")["n"]
-        row["staff"] = self._one("SELECT COUNT(*) AS n FROM users WHERE role IN ('admin','editor')")["n"]
-        row["vip_users"] = self._one(
-            "SELECT COUNT(*) AS n FROM users WHERE vip_until > datetime('now')")["n"]
-        pay = self._one("SELECT COUNT(*) AS n, COALESCE(SUM(stars), 0) AS stars FROM payments") or {}
-        row["payments"] = pay.get("n", 0)
-        row["stars"] = pay.get("stars", 0)
-        return row
+        s["users"] = self._one("SELECT COUNT(*) AS n FROM users")["n"]
+        s["staff"] = self._one("SELECT COUNT(*) AS n FROM users WHERE role IN ('admin','editor')")["n"]
+        s["revenue"] = self._one(
+            "SELECT COALESCE(SUM(amount), 0) AS n FROM payments WHERE source = 'stars' AND refunded = 0"
+        )["n"]
+        return s
 
 
 # ============================================================================
-# Умный поиск: опечатки, части слов, похожие названия
+# Доступ, оплата, медиа, авторизация Mini App
 # ============================================================================
-def normalize(text: str) -> str:
-    t = text.lower().replace("ё", "е")
-    t = re.sub(r"[^\w\s]+", " ", t)
-    return " ".join(t.split())
+def has_access(db: Database, role: str, user_id: int, film: dict) -> bool:
+    if film["price"] <= 0:
+        return True
+    if at_least(role, ADMIN) or film.get("owner_id") == user_id:
+        return True
+    return db.owns(user_id, film["id"])
 
 
-def _token_score(word: str, tokens: list[str]) -> float:
-    best = 0.0
-    for tok in tokens:
-        if tok == word:
-            return 1.0
-        if len(word) >= 2 and tok.startswith(word):
-            best = max(best, 0.95)  # «интер» → «интерстеллар»
-            continue
-        if len(tok) >= 3 and word.startswith(tok):
-            best = max(best, 0.9)
-            continue
-        ratio = SequenceMatcher(None, word, tok).ratio()
-        threshold = 0.7 if len(word) >= 4 else 0.99  # опечатки в длинных словах
-        if ratio >= threshold:
-            best = max(best, ratio * 0.9)
-    return best
+def embed_url(url: str) -> str:
+    """Для TikTok и YouTube отдаём официальный встраиваемый плеер, остальное — как есть."""
+    m = TIKTOK_RE.search(url)
+    if m:
+        return f"https://www.tiktok.com/embed/v2/{m.group(1)}"
+    m = YOUTUBE_RE.search(url)
+    if m:
+        return f"https://www.youtube.com/embed/{m.group(1)}"
+    return url
 
 
-def similarity(query: str, title: str) -> float:
-    q, t = normalize(query), normalize(title)
-    if not q or not t:
-        return 0.0
-    if q in t:
-        return 1.0
-    q_tokens, t_tokens = q.split(), t.split()
-    token_score = sum(_token_score(w, t_tokens) for w in q_tokens) / len(q_tokens)
-    whole = SequenceMatcher(None, q, t).ratio() * 0.9
-    return max(token_score, whole)
-
-
-def rank_films(films: list[dict], query: str, *, min_score: float, limit: int,
-               exclude_id: int | None = None) -> list[dict]:
-    scored = []
-    for f in films:
-        if f["id"] == exclude_id:
-            continue
-        score = similarity(query, f["title"])
-        if score >= min_score:
-            scored.append((score, f))
-    scored.sort(key=lambda x: (-x[0], -x[1]["views"], -x[1]["id"]))
-    return [f for _, f in scored[:limit]]
-
-
-def smart_search(films: list[dict], query: str, limit: int = 12) -> tuple[list[dict], bool]:
-    """Возвращает (результаты, точное_совпадение). Если точных нет — похожие."""
-    exact = rank_films(films, query, min_score=0.6, limit=limit)
-    if exact:
-        return exact, True
-    return rank_films(films, query, min_score=0.3, limit=limit), False
-
-
-# ============================================================================
-# Telegram Mini App: проверка подписи initData
-# ============================================================================
-def check_init_data(init_data: str, token: str, max_age: int = 86400) -> dict | None:
-    """Проверяет подпись WebApp.initData (алгоритм Telegram) и возвращает пользователя."""
+def verify_init_data(init_data: str, token: str, max_age: int = 86400) -> dict | None:
+    """Проверка подписи Telegram Mini App (initData). Возвращает пользователя или None."""
     if not init_data:
         return None
-    params = dict(parse_qsl(init_data, keep_blank_values=True))
-    their_hash = params.pop("hash", None)
+    pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+    their_hash = pairs.pop("hash", None)
     if not their_hash:
         return None
-    check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
+    check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
     secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
-    expected = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, their_hash):
+    if not hmac.compare_digest(hmac.new(secret, check.encode(), hashlib.sha256).hexdigest(), their_hash):
+        return None
+    if time.time() - int(pairs.get("auth_date", "0") or 0) > max_age:
         return None
     try:
-        if datetime.now(timezone.utc).timestamp() - int(params.get("auth_date", 0)) > max_age:
-            return None
-        return json.loads(params.get("user", "{}")) or None
-    except (ValueError, json.JSONDecodeError):
+        user = json.loads(pairs.get("user", "{}"))
+    except json.JSONDecodeError:
         return None
+    return user if isinstance(user, dict) and "id" in user else None
+
+
+def stream_token(secret: bytes, film_id: int, ttl: int = 900) -> str:
+    exp = int(time.time()) + ttl
+    sig = hmac.new(secret, f"{film_id}.{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{exp}.{sig}"
+
+
+def check_stream_token(secret: bytes, film_id: int, token: str) -> bool:
+    try:
+        exp_s, sig = token.split(".", 1)
+        exp = int(exp_s)
+    except ValueError:
+        return False
+    if exp < time.time():
+        return False
+    expected = hmac.new(secret, f"{film_id}.{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return hmac.compare_digest(expected, sig)
+
+
+class MediaTooLarge(Exception):
+    pass
+
+
+_media_locks: dict[str, asyncio.Lock] = {}
+
+
+async def ensure_media(bot: Bot, media_dir: Path, film: dict) -> Path:
+    """Скачивает видео из Telegram в кэш (Bot API отдаёт файлы до 20 МБ)."""
+    media_dir.mkdir(parents=True, exist_ok=True)
+    name = hashlib.sha1(film["video_file_id"].encode()).hexdigest() + ".mp4"
+    path = media_dir / name
+    if path.exists() and path.stat().st_size > 0:
+        return path
+    lock = _media_locks.setdefault(name, asyncio.Lock())
+    async with lock:
+        if not path.exists():
+            tmp = path.with_suffix(".part")
+            try:
+                tg_file = await bot.get_file(film["video_file_id"])
+            except TelegramBadRequest as err:
+                if "too big" in str(err).lower():
+                    raise MediaTooLarge from err
+                raise
+            await bot.download_file(tg_file.file_path, destination=tmp)
+            tmp.replace(path)
+    return path
 
 
 # ============================================================================
-# Тексты, карточки, клавиатуры
+# Тексты и клавиатуры (без эмодзи)
 # ============================================================================
 def esc(text: Any) -> str:
     return html.escape(str(text), quote=False)
 
 
-def btn(text: str, data: str | None = None, *, icon: str | None = None, url: str | None = None,
-        web_app: WebAppInfo | None = None, style: str | None = None) -> InlineKeyboardButton:
-    kwargs: dict[str, Any] = {}
-    if icon:
-        if icon in EMOJI_IDS:
-            kwargs["icon_custom_emoji_id"] = EMOJI_IDS[icon]
-        else:
-            fallback = ICON_FALLBACK.get(icon, "")
-            text = f"{fallback} {text}".strip()
-    if style:
-        kwargs["style"] = style  # primary | success | danger
-    if url:
-        kwargs["url"] = url
-    elif web_app:
-        kwargs["web_app"] = web_app
-    else:
-        kwargs["callback_data"] = data
-    return InlineKeyboardButton(text=text, **kwargs)
+def price_label(film: dict) -> str:
+    return "Бесплатно" if film["price"] <= 0 else f"{film['price']} звёзд"
+
+
+def film_caption(film: dict) -> str:
+    kind = "Видео в боте" if film["kind"] == "video" else "Mini App"
+    return f"<b>{esc(film['title'])}</b>\n{kind} · {price_label(film)}"
+
+
+async def send_film(bot: Bot, chat_id: int, film: dict, webapp_url: str | None = None) -> None:
+    """Загруженное видео — в боте. Ссылочный фильм открывается кнопкой в Mini App."""
+    if film["kind"] == "video":
+        await bot.send_video(chat_id, film["video_file_id"], caption=film_caption(film), supports_streaming=True)
+        return
+    kb = None
+    if webapp_url:
+        kb = rows_kb([[InlineKeyboardButton(
+            text="Смотреть в Mini App", web_app=WebAppInfo(url=f"{webapp_url}?film={film['id']}"))]])
+    await bot.send_message(chat_id, film_caption(film), reply_markup=kb)
+
+
+def btn(text: str, data: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=data)
 
 
 def rows_kb(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def film_badge(film: dict) -> str:
-    if film["is_vip"]:
-        return "💎"
-    return "▶️" if film["kind"] == "video" else "🔗"
+def short(text: str, n: int = 28) -> str:
+    return text if len(text) <= n else text[: n - 1] + "…"
 
 
-def kind_text(film: dict) -> str:
-    base = "видео в боте" if film["kind"] == "video" else "по ссылке"
-    return f"{base} · VIP" if film["is_vip"] else base
+def film_button(film: dict, webapp_url: str | None, suffix: str = "") -> InlineKeyboardButton:
+    label = short(film["title"]) + (f" · {film['price']}" if suffix and film["price"] else "")
+    if film["kind"] == "link" and webapp_url:
+        return InlineKeyboardButton(text=label, web_app=WebAppInfo(url=f"{webapp_url}?film={film['id']}"))
+    return btn(label, f"f:{film['id']}")
 
 
-def films_grid(films: list[dict]) -> list[list[InlineKeyboardButton]]:
-    rows, row = [], []
+def films_grid(films: list[dict], webapp_url: str | None, with_price: bool = False) -> list[list[InlineKeyboardButton]]:
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
     for f in films:
-        title = f["title"] if len(f["title"]) <= 26 else f["title"][:25] + "…"
-        row.append(btn(f"{film_badge(f)} {title}", f"f:{f['id']}"))
+        row.append(film_button(f, webapp_url, with_price))
         if len(row) == 2:
             rows.append(row)
             row = []
@@ -557,9 +611,9 @@ def pager(prefix: str, page: int, pages: int) -> list[InlineKeyboardButton]:
     if pages <= 1:
         return []
     return [
-        btn("", f"{prefix}:{page - 1}", icon="prev") if page > 0 else btn(" ", "noop"),
+        btn("←", f"{prefix}:{page - 1}") if page > 0 else btn(" ", "noop"),
         btn(f"{page + 1} / {pages}", "noop"),
-        btn("", f"{prefix}:{page + 1}", icon="next") if page < pages - 1 else btn(" ", "noop"),
+        btn("→", f"{prefix}:{page + 1}") if page < pages - 1 else btn(" ", "noop"),
     ]
 
 
@@ -571,90 +625,36 @@ def page_bounds(total: int, page: int, size: int) -> tuple[int, int, int]:
 
 def main_reply_kb(role: str, webapp_url: str | None) -> ReplyKeyboardMarkup:
     rows = [
-        [KeyboardButton(text="🎬 Каталог"), KeyboardButton(text="🔥 Популярное")],
-        [KeyboardButton(text="🔍 Поиск"), KeyboardButton(text="💎 VIP")],
+        [KeyboardButton(text="Каталог"), KeyboardButton(text="VIP")],
+        [KeyboardButton(text="Поиск"), KeyboardButton(text="Баланс")],
     ]
     if webapp_url:
-        rows.append([KeyboardButton(text="📱 Открыть Mini App", web_app=WebAppInfo(url=webapp_url))])
-    last = [KeyboardButton(text="ℹ️ Помощь")]
+        rows.append([KeyboardButton(text="Mini App", web_app=WebAppInfo(url=webapp_url)), KeyboardButton(text="Помощь")])
+    else:
+        rows.append([KeyboardButton(text="Помощь")])
     if at_least(role, EDITOR):
-        last.append(KeyboardButton(text="⚙️ Админ-панель"))
-    rows.append(last)
-    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True,
-                               input_field_placeholder="Выберите раздел или введите название фильма")
+        rows.append([KeyboardButton(text="Админ-панель")])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, input_field_placeholder="Выберите раздел")
 
 
 def admin_panel_kb(role: str) -> InlineKeyboardMarkup:
-    rows = [
-        [btn("Добавить фильм", "a:add", icon="add", style="success")],
-        [btn("Мои фильмы" if role == EDITOR else "Все фильмы", "a:films:0", icon="films")],
-    ]
+    rows = [[btn("Добавить фильм", "a:add")], [btn("Фильмы", "a:films:0")]]
     if at_least(role, ADMIN):
-        rows.append([btn("Команда", "a:team", icon="team"), btn("Статистика", "a:stats", icon="stats")])
-        rows.append([btn("Выдать VIP", "a:gvip", icon="vip")])
-    rows.append([btn("В главное меню", "m:home", icon="home")])
+        rows.append([btn("Команда", "a:team"), btn("Продажи", "a:sales:0")])
+        rows.append([btn("Статистика", "a:stats")])
+    rows.append([btn("В меню", "m:home")])
     return rows_kb(rows)
 
 
-WELCOME = (
-    "🕷 <b>Добро пожаловать</b>\n"
-    "━━━━━━━━━━━━━━━\n"
-    "Фильмы из TikTok в одном месте.\n"
-    "▶️ смотрим прямо здесь, 🔗 открываем по ссылке, 💎 VIP-фильмы доступны по подписке.\n\n"
-    "Выберите раздел кнопками внизу."
-)
+WELCOME = "Фильмы в каталоге, VIP-подборка за звёзды и баланс. Выберите раздел в меню."
 HELP = (
-    "ℹ️ <b>Как пользоваться</b>\n"
-    "━━━━━━━━━━━━━━━\n"
-    "🎬 <b>Каталог</b> — все фильмы сеткой, листается по страницам\n"
-    "🔥 <b>Популярное</b> — самые просматриваемые\n"
-    "🔍 <b>Поиск</b> — пишите часть названия, с опечатками тоже найдём\n"
-    "💎 <b>VIP</b> — подписка на закрытые фильмы\n"
-    "📱 <b>Mini App</b> — каталог и просмотр в отдельном окне\n\n"
-    "Значки: ▶️ видео в боте · 🔗 по ссылке · 💎 VIP"
+    "Каталог — все фильмы.\n"
+    "VIP — фильмы, которые открываются за звёзды.\n"
+    "Баланс — пополнение звёздами и покупки.\n"
+    "Поиск — поиск по названию.\n\n"
+    "Загруженные видео смотрите прямо в боте. "
+    "Фильмы по ссылке открываются в Mini App."
 )
-
-
-# ============================================================================
-# Отправка фильмов
-# ============================================================================
-async def send_film(bot: Bot, chat_id: int, film: dict) -> None:
-    """Карточка фильма: видео в боте или баннер/видео со ссылкой «Смотреть»."""
-    caption = (
-        f"🕷 <b>{esc(film['title'])}</b>\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"{film_badge(film)} {kind_text(film)} · 👁 {film['views']}"
-    )
-    # у превью (мастер добавления) ещё нет id — кнопку «Похожие» не показываем
-    similar = [btn("Похожие фильмы", f"sim:{film['id']}", icon="similar")] if film.get("id") else []
-    if film["kind"] == "video":
-        await bot.send_video(chat_id, film["video_file_id"], caption=caption,
-                             supports_streaming=True, reply_markup=rows_kb([similar]) if similar else None)
-        return
-    rows = [[btn("Смотреть", url=film["url"], style="primary")]]
-    if similar:
-        rows.append(similar)
-    kb = rows_kb(rows)
-    if film.get("photo_file_id"):
-        await bot.send_photo(chat_id, film["photo_file_id"], caption=caption, reply_markup=kb)
-    elif film.get("video_file_id"):
-        await bot.send_video(chat_id, film["video_file_id"], caption=caption, reply_markup=kb)
-    else:
-        await bot.send_message(chat_id, caption, reply_markup=kb)
-
-
-def vip_locked_text(film: dict) -> str:
-    return (
-        f"🔒 <b>{esc(film['title'])}</b>\n"
-        "━━━━━━━━━━━━━━━\n"
-        "Этот фильм доступен по VIP-подписке.\n"
-        "Оформите её за Telegram Stars — доступ откроется сразу после оплаты."
-    )
-
-
-def fmt_date(value: str) -> str:
-    dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    return dt.astimezone(TZ_LOCAL).strftime("%d.%m.%Y")
 
 
 # ============================================================================
@@ -670,21 +670,19 @@ class AddFilm(StatesGroup):
     kind = State()
     url = State()
     video = State()
+    access = State()
+    price = State()
     confirm = State()
 
 
 class Edit(StatesGroup):
     title = State()
     link = State()
+    price = State()
 
 
 class Team(StatesGroup):
     wait_id = State()
-
-
-class VipGrant(StatesGroup):
-    wait_id = State()
-    wait_days = State()
 
 
 # ============================================================================
@@ -711,7 +709,6 @@ class RoleMiddleware(BaseMiddleware):
 
 
 async def safe_show(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup | None = None) -> None:
-    """Редактирует сообщение, если это текст; иначе отправляет новое."""
     try:
         await callback.message.edit_text(text, reply_markup=kb)
     except TelegramBadRequest:
@@ -721,11 +718,8 @@ async def safe_show(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup
 def build_router(cfg: Config, db: Database) -> Router:
     router = Router(name="main")
 
-    def has_access(role: str, uid: int, film: dict) -> bool:
-        """VIP-фильм доступен сотрудникам и активным VIP-подписчикам."""
-        if not film["is_vip"]:
-            return True
-        return at_least(role, EDITOR) or db.is_vip(uid)
+    async def deliver(bot: Bot, chat_id: int, film: dict) -> None:
+        await send_film(bot, chat_id, film, cfg.webapp_url)
 
     async def deny(target: Message | CallbackQuery) -> None:
         if isinstance(target, CallbackQuery):
@@ -733,107 +727,84 @@ def build_router(cfg: Config, db: Database) -> Router:
         else:
             await target.answer("Недостаточно прав для этого действия.")
 
-    def catalog_view(page: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    async def show_home(message: Message, role: str) -> None:
+        await message.answer(WELCOME, reply_markup=main_reply_kb(role, cfg.webapp_url))
+
+    async def show_catalog(message: Message, page: int = 0) -> None:
         total = db.count_films(active=True)
         if total == 0:
-            return None
+            await message.answer("Пока в каталоге пусто.")
+            return
         page, pages, offset = page_bounds(total, page, CATALOG_PAGE)
-        films = db.list_films(active=True, limit=CATALOG_PAGE, offset=offset)
-        rows = films_grid(films)
+        rows = films_grid(db.list_films(active=True, limit=CATALOG_PAGE, offset=offset), cfg.webapp_url, True)
         nav = pager("cat", page, pages)
         if nav:
             rows.append(nav)
-        rows.append([btn("Поиск", "m:search", icon="search"), btn("Популярное", "m:top", icon="fire")])
-        text = f"🎬 <b>Каталог</b>\n━━━━━━━━━━━━━━━\nВсего фильмов: {total} · страница {page + 1} из {pages}"
+        await message.answer(f"Каталог · {total}", reply_markup=rows_kb(rows))
+
+    async def show_vip(message: Message, page: int = 0) -> None:
+        total = db.count_films(active=True, vip=True)
+        if total == 0:
+            await message.answer("VIP-фильмов пока нет.")
+            return
+        page, pages, offset = page_bounds(total, page, CATALOG_PAGE)
+        rows = films_grid(db.list_films(active=True, vip=True, limit=CATALOG_PAGE, offset=offset), cfg.webapp_url, True)
+        nav = pager("vip", page, pages)
+        if nav:
+            rows.append(nav)
+        await message.answer(f"VIP · {total}", reply_markup=rows_kb(rows))
+
+    def balance_text(uid: int) -> tuple[str, InlineKeyboardMarkup]:
+        rows = [[btn(f"+{n} звёзд", f"tu:{n}") for n in TOPUP_OPTIONS[:2]],
+                [btn(f"+{n} звёзд", f"tu:{n}") for n in TOPUP_OPTIONS[2:]]]
+        owned = db.owned_film_ids(uid)
+        text = f"Баланс: {db.balance(uid)} звёзд\nКупленных фильмов: {len(owned)}"
+        if cfg.webapp_url:
+            rows.append([InlineKeyboardButton(text="Открыть Mini App", web_app=WebAppInfo(url=cfg.webapp_url))])
         return text, rows_kb(rows)
 
-    async def show_home(message: Message, role: str, uid: int) -> None:
-        vip = db.vip_until(uid)
-        status = f"💎 VIP до {fmt_date(vip)}" if vip else "Статус: обычный пользователь"
-        if at_least(role, EDITOR):
-            status = f"{ROLE_TITLES[role]} · полный доступ"
-        await message.answer(f"{WELCOME}\n\n<i>{status}</i>", reply_markup=main_reply_kb(role, cfg.webapp_url))
-
-    async def show_catalog(message: Message, page: int = 0) -> None:
-        view = catalog_view(page)
-        if view is None:
-            await message.answer("Пока в каталоге пусто. Загляните позже!")
-            return
-        await message.answer(view[0], reply_markup=view[1])
-
-    async def show_top(message: Message) -> None:
-        films = db.list_films(active=True, top=True, limit=10)
-        if not films:
-            await message.answer("Пока нет фильмов.")
-            return
-        await message.answer("🔥 <b>Популярное</b>\n━━━━━━━━━━━━━━━\nСамое просматриваемое сейчас.",
-                             reply_markup=rows_kb(films_grid(films)))
-
-    async def show_vip(target: Message | CallbackQuery, role: str, uid: int) -> None:
-        if at_least(role, EDITOR):
-            text = f"💎 <b>VIP</b>\n━━━━━━━━━━━━━━━\n{ROLE_TITLES[role]}: у вас доступ ко всем фильмам."
-            rows = [[btn("Назад", "m:home", icon="back")]]
-        else:
-            until = db.vip_until(uid)
-            status = f"Активна до <b>{fmt_date(until)}</b>" if until else "Не активна"
-            text = (
-                "💎 <b>VIP-подписка</b>\n━━━━━━━━━━━━━━━\n"
-                "С VIP открываются все закрытые фильмы.\n"
-                "Оплата Telegram Stars, доступ сразу после оплаты. Срок продлевается.\n\n"
-                f"Ваш статус: {status}"
-            )
-            rows = []
-            for days, (title, stars) in VIP_PLANS.items():
-                style = "primary" if days == 90 else None
-                rows.append([btn(f"{title} · {stars} ⭐", f"vip:buy:{days}", icon="vip", style=style)])
-            rows.append([btn("Назад", "m:home", icon="back")])
-        if isinstance(target, CallbackQuery):
-            await safe_show(target, text, rows_kb(rows))
-            await target.answer()
-        else:
-            await target.answer(text, reply_markup=rows_kb(rows))
-
     async def show_admin(target: Message | CallbackQuery, role: str) -> None:
-        text = f"⚙️ <b>Админ-панель</b>\n━━━━━━━━━━━━━━━\n{ROLE_TITLES[role]}"
+        text = f"Админ-панель · {ROLE_TITLES[role]}"
         if isinstance(target, CallbackQuery):
             await safe_show(target, text, admin_panel_kb(role))
         else:
             await target.answer(text, reply_markup=admin_panel_kb(role))
 
     # ------------------------------------------------------------------
-    # Команды и deep links
+    # Команды
     # ------------------------------------------------------------------
+    async def send_offer(message: Message, film: dict, uid: int) -> None:
+        rows = [[btn(f"Купить за {film['price']} звёзд", f"buy:{film['id']}")]]
+        if db.balance(uid) >= film["price"]:
+            rows.append([btn(f"Оплатить балансом ({film['price']})", f"bal:{film['id']}")])
+        rows.append([btn("Пополнить баланс", "m:balance")])
+        await message.answer(film_caption(film) + "\n\nФильм откроется сразу после оплаты.",
+                             reply_markup=rows_kb(rows))
+
     @router.message(CommandStart())
-    async def on_start(message: Message, command: CommandObject, bot: Bot, role: str,
-                       state: FSMContext) -> None:
+    async def on_start(message: Message, command: CommandObject, bot: Bot, role: str, state: FSMContext) -> None:
         await state.clear()
-        payload = (command.args or "").strip()
-        if payload == "vip":
-            return await show_vip(message, role, message.from_user.id)
-        match = DEEP_LINK_RE.fullmatch(payload)
+        match = DEEP_LINK_RE.fullmatch(command.args or "")
         if match:
             film = db.get_film(int(match.group(1)))
             if film and film["is_active"]:
-                if not has_access(role, message.from_user.id, film):
-                    await message.answer(vip_locked_text(film), reply_markup=rows_kb([
-                        [btn("Оформить VIP", "vip:menu", icon="vip", style="primary")]]))
+                if film["kind"] == "link" or has_access(db, role, message.from_user.id, film):
+                    await deliver(bot, message.chat.id, film)
                     return
-                db.add_view(film["id"])
-                await send_film(bot, message.chat.id, film)
+                await send_offer(message, film, message.from_user.id)
                 return
-            await message.answer("Этот фильм больше недоступен.")
-        await show_home(message, role, message.from_user.id)
+        await show_home(message, role)
 
     @router.message(Command("menu"))
     async def on_menu(message: Message, role: str, state: FSMContext) -> None:
         await state.clear()
-        await show_home(message, role, message.from_user.id)
+        await show_home(message, role)
 
     @router.message(Command("cancel"))
     async def on_cancel(message: Message, role: str, state: FSMContext) -> None:
         had = await state.get_state() is not None
         await state.clear()
-        await message.answer("Действие отменено." if had else "Отменять нечего.",
+        await message.answer("Отменено." if had else "Нечего отменять.",
                              reply_markup=main_reply_kb(role, cfg.webapp_url))
 
     @router.message(Command("admin"))
@@ -843,51 +814,56 @@ def build_router(cfg: Config, db: Database) -> Router:
             return await deny(message)
         await show_admin(message, role)
 
-    @router.message(Command("add"))
-    async def on_add_cmd(message: Message, role: str, state: FSMContext) -> None:
-        if not at_least(role, EDITOR):
-            return await deny(message)
-        await start_add(message, state)
-
     # ------------------------------------------------------------------
     # Кнопки главного меню (работают из любого состояния)
     # ------------------------------------------------------------------
-    @router.message(F.text == "🎬 Каталог")
+    @router.message(F.text == "Каталог")
     async def on_btn_catalog(message: Message, state: FSMContext) -> None:
         await state.clear()
         await show_catalog(message, 0)
 
-    @router.message(F.text == "🔥 Популярное")
-    async def on_btn_top(message: Message, state: FSMContext) -> None:
+    @router.message(F.text == "VIP")
+    async def on_btn_vip(message: Message, state: FSMContext) -> None:
         await state.clear()
-        await show_top(message)
+        await show_vip(message, 0)
 
-    @router.message(F.text == "🔍 Поиск")
+    @router.message(F.text == "Баланс")
+    async def on_btn_balance(message: Message, state: FSMContext) -> None:
+        await state.clear()
+        text, kb = balance_text(message.from_user.id)
+        await message.answer(text, reply_markup=kb)
+
+    @router.message(F.text == "Поиск")
     async def on_btn_search(message: Message, state: FSMContext) -> None:
         await state.set_state(Search.query)
-        await message.answer(
-            "🔍 <b>Поиск</b>\n━━━━━━━━━━━━━━━\n"
-            "Напишите название или его часть.\n"
-            "Опечатки тоже подойдут: «интерстелар» найдёт «Интерстеллар».\n\n"
-            "/cancel — выйти из поиска"
-        )
+        await message.answer("Напишите часть названия.\n/cancel — отмена")
 
-    @router.message(F.text == "💎 VIP")
-    async def on_btn_vip(message: Message, role: str, state: FSMContext) -> None:
-        await state.clear()
-        await show_vip(message, role, message.from_user.id)
-
-    @router.message(F.text == "ℹ️ Помощь")
+    @router.message(F.text == "Помощь")
     async def on_btn_help(message: Message, state: FSMContext) -> None:
         await state.clear()
         await message.answer(HELP)
 
-    @router.message(F.text == "⚙️ Админ-панель")
+    @router.message(F.text == "Админ-панель")
     async def on_btn_admin(message: Message, role: str, state: FSMContext) -> None:
         await state.clear()
         if not at_least(role, EDITOR):
             return await deny(message)
         await show_admin(message, role)
+
+    @router.callback_query(F.data == "m:home")
+    async def on_home_btn(callback: CallbackQuery, role: str) -> None:
+        await callback.answer()
+        await show_home(callback.message, role)
+
+    @router.callback_query(F.data == "m:balance")
+    async def on_balance_btn(callback: CallbackQuery) -> None:
+        await callback.answer()
+        text, kb = balance_text(callback.from_user.id)
+        await safe_show(callback, text, kb)
+
+    @router.callback_query(F.data == "noop")
+    async def on_noop(callback: CallbackQuery) -> None:
+        await callback.answer()
 
     # ------------------------------------------------------------------
     # Поиск
@@ -896,18 +872,126 @@ def build_router(cfg: Config, db: Database) -> Router:
     async def on_search(message: Message, state: FSMContext) -> None:
         query = message.text.strip()[:60]
         await state.clear()
-        films = db.list_films(active=True, limit=1000)
-        results, exact = smart_search(films, query)
-        if not results:
-            await message.answer(
-                f"По запросу «{esc(query)}» ничего похожего нет.\n"
-                "Попробуйте другое слово или посмотрите каталог.",
-                reply_markup=rows_kb([[btn("Каталог", "m:catalog", icon="catalog")]]),
-            )
+        films = db.list_films(active=True, search=query, limit=20)
+        if not films:
+            await message.answer(f"По запросу «{esc(query)}» ничего не найдено.")
             return
-        head = (f"🔍 Найдено: {len(results)}" if exact else
-                f"Точного совпадения нет. Похожие по «{esc(query)}»:")
-        await message.answer(head, reply_markup=rows_kb(films_grid(results)))
+        await message.answer(f"Найдено: {len(films)}", reply_markup=rows_kb(films_grid(films, cfg.webapp_url, True)))
+
+    # ------------------------------------------------------------------
+    # Каталог и VIP: листание и открытие фильма
+    # ------------------------------------------------------------------
+    @router.callback_query(F.data.regexp(r"^(cat|vip):\d+$"))
+    async def on_page(callback: CallbackQuery) -> None:
+        prefix, raw = callback.data.split(":")
+        vip = prefix == "vip"
+        total = db.count_films(active=True, vip=True if vip else None)
+        page, pages, offset = page_bounds(total, int(raw), CATALOG_PAGE)
+        films = db.list_films(active=True, vip=True if vip else None, limit=CATALOG_PAGE, offset=offset)
+        rows = films_grid(films, cfg.webapp_url, True)
+        nav = pager(prefix, page, pages)
+        if nav:
+            rows.append(nav)
+        await safe_show(callback, f"{'VIP' if vip else 'Каталог'} · {total}", rows_kb(rows))
+        await callback.answer()
+
+    @router.callback_query(F.data.regexp(r"^f:\d+$"))
+    async def on_film(callback: CallbackQuery, bot: Bot, role: str) -> None:
+        film = db.get_film(int(callback.data.split(":")[1]))
+        if not film or not film["is_active"]:
+            await callback.answer("Фильм недоступен", show_alert=True)
+            return
+        await callback.answer()
+        uid = callback.from_user.id
+        if film["kind"] == "link" or has_access(db, role, uid, film):
+            db.add_view(film["id"])
+            await deliver(bot, callback.message.chat.id, film)
+            return
+        await send_offer(callback.message, film, uid)
+
+    @router.callback_query(F.data.regexp(r"^buy:\d+$"))
+    async def on_buy(callback: CallbackQuery, bot: Bot, role: str) -> None:
+        film = db.get_film(int(callback.data.split(":")[1]))
+        if not film or not film["is_active"] or film["kind"] != "video":
+            await callback.answer("Недоступно", show_alert=True)
+            return
+        if has_access(db, role, callback.from_user.id, film):
+            await callback.answer("Фильм уже открыт")
+            return
+        await callback.answer()
+        await bot.send_invoice(
+            callback.message.chat.id,
+            title=short(film["title"], 32),
+            description=f"Открытие фильма «{short(film['title'], 200)}»",
+            payload=f"film:{film['id']}",
+            currency="XTR",
+            prices=[LabeledPrice(label=short(film["title"], 32), amount=film["price"])],
+        )
+
+    @router.callback_query(F.data.regexp(r"^bal:\d+$"))
+    async def on_pay_balance(callback: CallbackQuery, bot: Bot) -> None:
+        film = db.get_film(int(callback.data.split(":")[1]))
+        if not film or not film["is_active"]:
+            await callback.answer("Недоступно", show_alert=True)
+            return
+        if not db.pay_film_with_balance(callback.from_user.id, film):
+            await callback.answer("Недостаточно звёзд на балансе", show_alert=True)
+            return
+        await callback.answer("Фильм открыт")
+        await deliver(bot, callback.message.chat.id, film)
+
+    @router.callback_query(F.data.regexp(r"^tu:\d+$"))
+    async def on_topup(callback: CallbackQuery, bot: Bot) -> None:
+        amount = int(callback.data.split(":")[1])
+        if amount not in TOPUP_OPTIONS:
+            await callback.answer("Недоступно", show_alert=True)
+            return
+        await callback.answer()
+        await bot.send_invoice(
+            callback.message.chat.id,
+            title=f"Пополнение {amount} звёзд",
+            description="Звёзды зачисляются на баланс и тратятся на VIP-фильмы",
+            payload=f"topup:{amount}",
+            currency="XTR",
+            prices=[LabeledPrice(label=f"Пополнение {amount}", amount=amount)],
+        )
+
+    # ------------------------------------------------------------------
+    # Платежи Telegram Stars
+    # ------------------------------------------------------------------
+    @router.pre_checkout_query()
+    async def on_pre_checkout(query: PreCheckoutQuery, bot: Bot) -> None:
+        kind, _, arg = query.invoice_payload.partition(":")
+        ok, error = False, "Оплата недоступна"
+        if kind == "film" and arg.isdigit():
+            film = db.get_film(int(arg))
+            if not film or not film["is_active"] or film["price"] != query.total_amount:
+                error = "Фильм недоступен"
+            elif db.owns(query.from_user.id, film["id"]):
+                error = "Фильм уже открыт"
+            else:
+                ok = True
+        elif kind == "topup" and arg.isdigit() and int(arg) in TOPUP_OPTIONS and int(arg) == query.total_amount:
+            ok = True
+        await bot.answer_pre_checkout_query(query.id, ok=ok, error_message=None if ok else error)
+
+    @router.message(F.successful_payment)
+    async def on_paid(message: Message, bot: Bot) -> None:
+        sp = message.successful_payment
+        kind, _, arg = sp.invoice_payload.partition(":")
+        uid = message.from_user.id
+        if kind == "film" and arg.isdigit():
+            film = db.get_film(int(arg))
+            if not film:
+                await message.answer("Оплата получена, но фильм не найден. Напишите владельцу.")
+                return
+            if db.record_stars_payment(uid, "film", film["id"], sp.total_amount, sp.telegram_payment_charge_id):
+                await message.answer("Оплата прошла. Фильм открыт.")
+                await deliver(bot, message.chat.id, film)
+            return
+        if kind == "topup" and arg.isdigit():
+            if db.record_stars_payment(uid, "topup", None, sp.total_amount, sp.telegram_payment_charge_id):
+                await message.answer(f"Баланс пополнен на {sp.total_amount} звёзд. Текущий баланс: {db.balance(uid)}.")
 
     # ------------------------------------------------------------------
     # Мастер добавления фильма (редактор+)
@@ -915,10 +999,13 @@ def build_router(cfg: Config, db: Database) -> Router:
     async def start_add(target: Message, state: FSMContext) -> None:
         await state.clear()
         await state.set_state(AddFilm.media)
-        await target.answer(
-            "🎞 <b>Новый фильм</b>\n━━━━━━━━━━━━━━━\n"
-            "Шаг 1 из 4. Пришлите <b>видео</b> или <b>фото-баннер</b>.\n/cancel — отмена"
-        )
+        await target.answer("Новый фильм.\nШаг 1 из 5. Пришлите видео или фото-баннер.\n/cancel — отмена")
+
+    @router.message(Command("add"))
+    async def on_add_cmd(message: Message, role: str, state: FSMContext) -> None:
+        if not at_least(role, EDITOR):
+            return await deny(message)
+        await start_add(message, state)
 
     @router.callback_query(F.data == "a:add")
     async def on_add_btn(callback: CallbackQuery, role: str, state: FSMContext) -> None:
@@ -934,7 +1021,7 @@ def build_router(cfg: Config, db: Database) -> Router:
         else:
             await state.update_data(photo_file_id=message.photo[-1].file_id)
         await state.set_state(AddFilm.title)
-        await message.answer("Шаг 2 из 4. Напишите <b>название</b> фильма.")
+        await message.answer("Шаг 2 из 5. Напишите название.")
 
     @router.message(AddFilm.media)
     async def on_media_bad(message: Message) -> None:
@@ -945,12 +1032,12 @@ def build_router(cfg: Config, db: Database) -> Router:
         await state.update_data(title=message.text.strip()[:100])
         await state.set_state(AddFilm.kind)
         await message.answer(
-            "Шаг 3 из 4. Как открывать фильм?\n\n"
-            "🔗 <b>По ссылке</b> — кнопка «Смотреть» ведёт на ваш переходник.\n"
-            "▶️ <b>В боте</b> — фильм проигрывается в Telegram и в Mini App.",
+            "Шаг 3 из 5. Как открывать фильм?\n"
+            "По ссылке — откроется в Mini App.\n"
+            "Видео в боте — загруженный файл, смотрится в боте и в Mini App.",
             reply_markup=rows_kb([
-                [btn("По ссылке", "wz:kind:link", icon="link"), btn("В боте", "wz:kind:video", icon="play")],
-                [btn("Отмена", "wz:cancel", icon="cancel")],
+                [btn("По ссылке", "wz:kind:link"), btn("Видео в боте", "wz:kind:video")],
+                [btn("Отмена", "wz:cancel")],
             ]),
         )
 
@@ -963,57 +1050,73 @@ def build_router(cfg: Config, db: Database) -> Router:
         await callback.answer()
         kind = callback.data.split(":")[-1]
         await state.update_data(kind=kind)
-        data = await state.get_data()
         if kind == "link":
             await state.set_state(AddFilm.url)
-            await callback.message.answer("Шаг 4 из 4. Пришлите ссылку-переходник (https://...).")
-        elif data.get("video_file_id"):
-            await show_confirm(callback.message, state)
+            await callback.message.answer("Шаг 4 из 5. Пришлите ссылку (https://...).")
+        elif (await state.get_data()).get("video_file_id"):
+            await ask_access(callback.message, state)
         else:
             await state.set_state(AddFilm.video)
-            await callback.message.answer("Шаг 4 из 4. Пришлите видеофайл фильма.")
+            await callback.message.answer("Шаг 4 из 5. Пришлите видеофайл.")
 
     @router.message(AddFilm.url, F.text)
     async def on_url(message: Message, state: FSMContext) -> None:
         url = message.text.strip()
         if not URL_RE.match(url):
-            await message.answer("Нужна ссылка, начинающаяся с https:// или http://")
+            await message.answer("Нужна ссылка, начинающаяся с https://")
             return
         await state.update_data(url=url)
-        await show_confirm(message, state)
+        await ask_access(message, state)
 
     @router.message(AddFilm.video, F.video)
     async def on_video(message: Message, state: FSMContext) -> None:
         await state.update_data(video_file_id=message.video.file_id)
-        await show_confirm(message, state)
+        await ask_access(message, state)
 
     @router.message(AddFilm.video)
     async def on_video_bad(message: Message) -> None:
-        await message.answer("Пришлите именно видеофайл.")
+        await message.answer("Пришлите видеофайл.")
 
-    def confirm_kb(is_vip: bool) -> InlineKeyboardMarkup:
-        return rows_kb([
-            [btn("Закрытый VIP" if not is_vip else "Сделать бесплатным",
-                 "wz:vip", icon="vip")],
-            [btn("Сохранить", "wz:save", icon="ok", style="success"), btn("Отмена", "wz:cancel", icon="no")],
-        ])
+    async def ask_access(message: Message, state: FSMContext) -> None:
+        await state.set_state(AddFilm.access)
+        await message.answer(
+            "Шаг 5 из 5. Доступ к фильму?",
+            reply_markup=rows_kb([[btn("Бесплатно", "wz:acc:free"), btn("VIP за звёзды", "wz:acc:vip")]]),
+        )
+
+    @router.callback_query(AddFilm.access, F.data.in_({"wz:acc:free", "wz:acc:vip"}))
+    async def on_access(callback: CallbackQuery, state: FSMContext) -> None:
+        await callback.answer()
+        if callback.data == "wz:acc:free":
+            await state.update_data(price=0)
+            return await show_confirm(callback.message, state)
+        await state.set_state(AddFilm.price)
+        await callback.message.answer(f"Укажите цену в звёздах (от 1 до {MAX_PRICE}).")
+
+    @router.message(AddFilm.price, F.text)
+    async def on_price(message: Message, state: FSMContext) -> None:
+        text = message.text.strip()
+        if not text.isdigit() or not 1 <= int(text) <= MAX_PRICE:
+            await message.answer(f"Введите целое число от 1 до {MAX_PRICE}.")
+            return
+        await state.update_data(price=int(text))
+        await show_confirm(message, state)
 
     async def show_confirm(message: Message, state: FSMContext) -> None:
         await state.set_state(AddFilm.confirm)
         data = await state.get_data()
-        await message.answer("👀 <b>Превью карточки</b>")
-        await send_film(message.bot, message.chat.id, {**data, "views": 0, "is_vip": data.get("is_vip", False)})
-        access = "💎 VIP-фильм" if data.get("is_vip") else "🆓 Бесплатный"
-        await message.answer(f"Сохранить фильм? · {access}", reply_markup=confirm_kb(bool(data.get("is_vip"))))
-
-    @router.callback_query(AddFilm.confirm, F.data == "wz:vip")
-    async def on_toggle_vip_draft(callback: CallbackQuery, state: FSMContext) -> None:
-        data = await state.get_data()
-        is_vip = not data.get("is_vip", False)
-        await state.update_data(is_vip=is_vip)
-        access = "💎 VIP-фильм" if is_vip else "🆓 Бесплатный"
-        await callback.answer("Доступ изменён")
-        await safe_show(callback, f"Сохранить фильм? · {access}", confirm_kb(is_vip))
+        preview = {**data, "id": 0}
+        await message.answer("Превью:")
+        if data["kind"] == "video" and data.get("video_file_id"):
+            await message.bot.send_video(message.chat.id, data["video_file_id"], caption=film_caption(preview))
+        elif data.get("photo_file_id"):
+            await message.bot.send_photo(message.chat.id, data["photo_file_id"], caption=film_caption(preview))
+        else:
+            await message.answer(film_caption(preview))
+        await message.answer(
+            "Сохранить фильм?",
+            reply_markup=rows_kb([[btn("Сохранить", "wz:save"), btn("Отмена", "wz:cancel")]]),
+        )
 
     @router.callback_query(AddFilm.confirm, F.data == "wz:save")
     async def on_save(callback: CallbackQuery, role: str, state: FSMContext) -> None:
@@ -1021,51 +1124,43 @@ def build_router(cfg: Config, db: Database) -> Router:
             return await deny(callback)
         data = await state.get_data()
         film_id = db.create_film(
-            title=data["title"],
-            kind=data["kind"],
-            owner_id=callback.from_user.id,
-            is_vip=bool(data.get("is_vip")),
-            url=data.get("url"),
-            video_file_id=data.get("video_file_id"),
-            photo_file_id=data.get("photo_file_id"),
+            title=data["title"], kind=data["kind"], owner_id=callback.from_user.id,
+            price=data.get("price", 0), url=data.get("url"),
+            video_file_id=data.get("video_file_id"), photo_file_id=data.get("photo_file_id"),
         )
         await state.clear()
         await callback.answer("Сохранено")
         await callback.message.answer(
-            f"✅ <b>Фильм #{film_id} добавлен</b>\nОн уже виден в каталоге.",
-            reply_markup=rows_kb([[btn("Мои фильмы", "a:films:0", icon="films"),
-                                   btn("Добавить ещё", "a:add", icon="add")]]),
+            f"Фильм #{film_id} добавлен в каталог.",
+            reply_markup=rows_kb([[btn("Мои фильмы", "a:films:0"), btn("Добавить ещё", "a:add")]]),
         )
 
     @router.callback_query(F.data == "wz:cancel")
     async def on_cancel_btn(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await callback.answer()
-        await callback.message.answer("Добавление отменено.")
+        await callback.message.answer("Отменено.")
 
     # ------------------------------------------------------------------
-    # Управление фильмами (редактор — свои, админ+ — все)
+    # Управление фильмами
     # ------------------------------------------------------------------
     @router.callback_query(F.data.startswith("a:films:"))
     async def on_films_list(callback: CallbackQuery, role: str) -> None:
         if not at_least(role, EDITOR):
             return await deny(callback)
-        scope_owner = None if at_least(role, ADMIN) else callback.from_user.id
-        total = db.count_films(owner_id=scope_owner)
+        scope = None if at_least(role, ADMIN) else callback.from_user.id
+        total = db.count_films(owner_id=scope)
         page, pages, offset = page_bounds(total, int(callback.data.rsplit(":", 1)[1]), ADMIN_PAGE)
-        films = db.list_films(owner_id=scope_owner, limit=ADMIN_PAGE, offset=offset)
-        rows = [
-            [btn(f"{'🟢' if f['is_active'] else '⚪'} {film_badge(f)} #{f['id']} {f['title'][:24]}",
-                 f"a:film:{f['id']}")]
-            for f in films
-        ]
+        films = db.list_films(owner_id=scope, limit=ADMIN_PAGE, offset=offset)
+        rows = [[btn(f"{'' if f['is_active'] else 'Скрыт · '}{short(f['title'], 24)}", f"a:film:{f['id']}")]
+                for f in films]
         nav = pager("a:films", page, pages)
         if nav:
             rows.append(nav)
-        rows.append([btn("Назад", "a:panel", icon="back")])
-        text = f"🎞 <b>{'Все фильмы' if scope_owner is None else 'Мои фильмы'}</b> · {total}"
+        rows.append([btn("Назад", "a:panel")])
+        text = f"Фильмы · {'все' if scope is None else 'мои'}: {total}"
         if not films:
-            text += "\n\nПока пусто. Нажмите «Добавить фильм»."
+            text += "\n\nПока пусто."
         await safe_show(callback, text, rows_kb(rows))
         await callback.answer()
 
@@ -1080,41 +1175,37 @@ def build_router(cfg: Config, db: Database) -> Router:
         return film
 
     async def render_card(callback: CallbackQuery, film: dict) -> None:
-        status = "показан в каталоге" if film["is_active"] else "скрыт"
         text = (
-            f"🎞 <b>{esc(film['title'])}</b>\n"
-            "━━━━━━━━━━━━━━━\n"
-            f"ID: {film['id']} · {kind_text(film)}\n"
-            f"👁 Просмотров: {film['views']}\n"
-            f"Статус: {status}"
+            f"<b>{esc(film['title'])}</b>\n"
+            f"ID {film['id']} · {'видео в боте' if film['kind'] == 'video' else 'по ссылке'} · "
+            f"{price_label(film)}\n"
+            f"Просмотров: {film['views']}\n"
+            f"Статус: {'в каталоге' if film['is_active'] else 'скрыт'}"
         )
-        rows = [[btn("Открыть", f"a:open:{film['id']}", icon="play"),
-                 btn("Название", f"a:rename:{film['id']}", icon="edit")]]
+        rows = [[btn("Открыть", f"a:open:{film['id']}"), btn("Название", f"a:rename:{film['id']}")]]
         if film["kind"] == "link":
-            rows.append([btn("Сменить ссылку", f"a:link:{film['id']}", icon="link")])
+            rows.append([btn("Сменить ссылку", f"a:link:{film['id']}")])
+        rows.append([btn("Цена", f"a:price:{film['id']}")])
         rows.append([
-            btn("Бесплатный" if film["is_vip"] else "Сделать VIP", f"a:vipf:{film['id']}", icon="vip"),
-            btn("Скрыть" if film["is_active"] else "Показать", f"a:toggle:{film['id']}", icon="pause"),
+            btn("Скрыть" if film["is_active"] else "Показать", f"a:toggle:{film['id']}"),
+            btn("Удалить", f"a:del:{film['id']}"),
         ])
-        rows.append([btn("Удалить", f"a:del:{film['id']}", icon="trash", style="danger")])
-        rows.append([btn("К списку", "a:films:0", icon="back")])
+        rows.append([btn("К списку", "a:films:0")])
         await safe_show(callback, text, rows_kb(rows))
 
     @router.callback_query(F.data.regexp(r"^a:film:\d+$"))
     async def on_film_card(callback: CallbackQuery, role: str) -> None:
         film = await load_managed(callback, role, int(callback.data.split(":")[-1]))
-        if not film:
-            return
-        await callback.answer()
-        await render_card(callback, film)
+        if film:
+            await callback.answer()
+            await render_card(callback, film)
 
     @router.callback_query(F.data.regexp(r"^a:open:\d+$"))
     async def on_open(callback: CallbackQuery, role: str, bot: Bot) -> None:
         film = await load_managed(callback, role, int(callback.data.split(":")[-1]))
-        if not film:
-            return
-        await callback.answer()
-        await send_film(bot, callback.message.chat.id, film)
+        if film:
+            await callback.answer()
+            await deliver(bot, callback.message.chat.id, film)
 
     @router.callback_query(F.data.regexp(r"^a:toggle:\d+$"))
     async def on_toggle(callback: CallbackQuery, role: str) -> None:
@@ -1125,39 +1216,26 @@ def build_router(cfg: Config, db: Database) -> Router:
         await callback.answer("Готово")
         await render_card(callback, db.get_film(film["id"]))
 
-    @router.callback_query(F.data.regexp(r"^a:vipf:\d+$"))
-    async def on_toggle_vip(callback: CallbackQuery, role: str) -> None:
-        film = await load_managed(callback, role, int(callback.data.split(":")[-1]))
-        if not film:
-            return
-        db.update_film(film["id"], is_vip=0 if film["is_vip"] else 1)
-        await callback.answer("Доступ изменён")
-        await render_card(callback, db.get_film(film["id"]))
-
     @router.callback_query(F.data.regexp(r"^a:del:\d+$"))
     async def on_delete_ask(callback: CallbackQuery, role: str) -> None:
         film = await load_managed(callback, role, int(callback.data.split(":")[-1]))
-        if not film:
-            return
-        await callback.answer()
-        await safe_show(
-            callback,
-            f"Удалить фильм #{film['id']} «{esc(film['title'])}»?\nЭто необратимо.",
-            rows_kb([[btn("Да, удалить", f"a:delok:{film['id']}", icon="trash", style="danger"),
-                      btn("Нет", f"a:film:{film['id']}", icon="no")]]),
-        )
+        if film:
+            await callback.answer()
+            await safe_show(
+                callback,
+                f"Удалить фильм «{esc(film['title'])}»? Это необратимо.",
+                rows_kb([[btn("Да, удалить", f"a:delok:{film['id']}"), btn("Нет", f"a:film:{film['id']}")]]),
+            )
 
     @router.callback_query(F.data.regexp(r"^a:delok:\d+$"))
     async def on_delete(callback: CallbackQuery, role: str) -> None:
         film = await load_managed(callback, role, int(callback.data.split(":")[-1]))
-        if not film:
-            return
-        db.delete_film(film["id"])
-        await callback.answer("Фильм удалён")
-        await safe_show(callback, f"🗑 Фильм #{film['id']} удалён.",
-                        rows_kb([[btn("К списку", "a:films:0", icon="back")]]))
+        if film:
+            db.delete_film(film["id"])
+            await callback.answer("Удалено")
+            await safe_show(callback, "Фильм удалён.", rows_kb([[btn("К списку", "a:films:0")]]))
 
-    @router.callback_query(F.data.regexp(r"^a:(rename|link):\d+$"))
+    @router.callback_query(F.data.regexp(r"^a:(rename|link|price):\d+$"))
     async def on_edit_ask(callback: CallbackQuery, role: str, state: FSMContext) -> None:
         action, raw_id = callback.data.split(":")[1:]
         film = await load_managed(callback, role, int(raw_id))
@@ -1169,22 +1247,27 @@ def build_router(cfg: Config, db: Database) -> Router:
         await callback.answer()
         await state.clear()
         await state.update_data(film_id=film["id"])
-        if action == "rename":
-            await state.set_state(Edit.title)
-            await callback.message.answer("Пришлите новое название.\n/cancel — отмена")
-        else:
-            await state.set_state(Edit.link)
-            await callback.message.answer("Пришлите новую ссылку (https://...).\n/cancel — отмена")
+        prompts = {
+            "rename": (Edit.title, "Новое название.\n/cancel — отмена"),
+            "link": (Edit.link, "Новая ссылка (https://...).\n/cancel — отмена"),
+            "price": (Edit.price, f"Новая цена в звёздах (0 — бесплатно, до {MAX_PRICE})."),
+        }
+        new_state, prompt = prompts[action]
+        await state.set_state(new_state)
+        await callback.message.answer(prompt)
 
-    @router.message(Edit.title, F.text)
-    async def on_rename(message: Message, role: str, state: FSMContext) -> None:
-        film = db.get_film((await state.get_data())["film_id"])
+    async def edit_film_from_message(message: Message, role: str, state: FSMContext, field: str, value: Any) -> None:
+        data = await state.get_data()
+        film = db.get_film(data.get("film_id", 0))
         await state.clear()
         if not film or not can_manage_film(role, message.from_user.id, film):
             return await deny(message)
-        db.update_film(film["id"], title=message.text.strip()[:100])
-        await message.answer("✅ Название обновлено.",
-                             reply_markup=rows_kb([[btn("К фильму", f"a:film:{film['id']}", icon="back")]]))
+        db.update_film(film["id"], **{field: value})
+        await message.answer("Сохранено.", reply_markup=rows_kb([[btn("К фильму", f"a:film:{film['id']}")]]))
+
+    @router.message(Edit.title, F.text)
+    async def on_rename(message: Message, role: str, state: FSMContext) -> None:
+        await edit_film_from_message(message, role, state, "title", message.text.strip()[:100])
 
     @router.message(Edit.link, F.text)
     async def on_relink(message: Message, role: str, state: FSMContext) -> None:
@@ -1192,36 +1275,35 @@ def build_router(cfg: Config, db: Database) -> Router:
         if not URL_RE.match(url):
             await message.answer("Нужна ссылка, начинающаяся с https://")
             return
-        film = db.get_film((await state.get_data())["film_id"])
-        await state.clear()
-        if not film or not can_manage_film(role, message.from_user.id, film):
-            return await deny(message)
-        db.update_film(film["id"], url=url)
-        await message.answer("✅ Ссылка обновлена.",
-                             reply_markup=rows_kb([[btn("К фильму", f"a:film:{film['id']}", icon="back")]]))
+        await edit_film_from_message(message, role, state, "url", url)
+
+    @router.message(Edit.price, F.text)
+    async def on_reprice(message: Message, role: str, state: FSMContext) -> None:
+        text = message.text.strip()
+        if not text.isdigit() or int(text) > MAX_PRICE:
+            await message.answer(f"Введите целое число от 0 до {MAX_PRICE}.")
+            return
+        await edit_film_from_message(message, role, state, "price", int(text))
 
     # ------------------------------------------------------------------
-    # Команда: роли (админ+)
+    # Команда и продажи (админ+)
     # ------------------------------------------------------------------
-    async def team_view(target: Message | CallbackQuery, actor_role: str) -> None:
-        lines = ["👥 <b>Команда</b>", "━━━━━━━━━━━━━━━", f"{ROLE_TITLES[OWNER]} · <code>{cfg.owner_id}</code>"]
+    async def team_view(target: Message | CallbackQuery, actor: str) -> None:
+        lines = ["Команда", f"Владелец: {cfg.owner_id}"]
         rows: list[list[InlineKeyboardButton]] = []
-        staff = db.staff()
-        for m in staff:
+        for m in db.staff():
             name = esc(m["first_name"] or m["username"] or m["tg_id"])
-            lines.append(f"{ROLE_TITLES[m['role']]} · {name} · <code>{m['tg_id']}</code>")
-            if can_change_role(actor_role, m["role"], USER):
-                rows.append([btn(f"Снять роль: {m['tg_id']}", f"a:rm:{m['tg_id']}", icon="trash", style="danger")])
-        if not staff:
-            lines.append("\nПока нет админов и редакторов.")
-        add_row = [btn("Редактор", "a:addm:editor", icon="add", style="success")]
-        if actor_role == OWNER:
-            add_row.append(btn("Админ", "a:addm:admin", icon="admin", style="primary"))
+            lines.append(f"{ROLE_TITLES[m['role']]}: {name} ({m['tg_id']})")
+            if can_change_role(actor, m["role"], USER):
+                rows.append([btn(f"Снять роль: {m['tg_id']}", f"a:rm:{m['tg_id']}")])
+        if not db.staff():
+            lines.append("\nПока никого нет.")
+        add_row = [btn("Добавить редактора", "a:addm:editor")]
+        if actor == OWNER:
+            add_row.append(btn("Добавить админа", "a:addm:admin"))
         rows.append(add_row)
-        rows.append([btn("Назад", "a:panel", icon="back")])
-        text = "\n".join(lines) + (
-            "\n\nЧтобы выдать роль, пришлите Telegram ID пользователя или перешлите его сообщение."
-        )
+        rows.append([btn("Назад", "a:panel")])
+        text = "\n".join(lines) + "\n\nПришлите Telegram ID или перешлите сообщение пользователя."
         if isinstance(target, CallbackQuery):
             await safe_show(target, text, rows_kb(rows))
             await target.answer()
@@ -1243,32 +1325,31 @@ def build_router(cfg: Config, db: Database) -> Router:
         await callback.answer()
         await state.set_state(Team.wait_id)
         await state.update_data(new_role=new_role)
-        await callback.message.answer(
-            f"Пришлите Telegram ID для роли «{ROLE_TITLES[new_role]}» "
-            "или перешлите сообщение пользователя.\n/cancel — отмена"
-        )
+        await callback.message.answer(f"Пришлите ID для роли «{ROLE_TITLES[new_role]}» или перешлите сообщение.\n/cancel — отмена")
 
     @router.message(Team.wait_id)
     async def on_add_member(message: Message, role: str, bot: Bot, state: FSMContext) -> None:
-        new_role = (await state.get_data()).get("new_role", EDITOR)
-        await state.clear()
-        target_id = extract_user_id(message)
-        if target_id is None:
-            await message.answer("Нужен числовой Telegram ID или пересланное сообщение. Повторите из меню «Команда».")
+        data = await state.get_data()
+        new_role = data.get("new_role", EDITOR)
+        origin = message.forward_origin
+        if isinstance(origin, MessageOriginUser):
+            target_id = origin.sender_user.id
+        elif message.text and message.text.strip().isdigit():
+            target_id = int(message.text.strip())
+        else:
+            await message.answer("Нужен числовой ID или пересланное сообщение.")
             return
+        await state.clear()
         if target_id == cfg.owner_id:
-            await message.answer("Это владелец бота, его роль не меняется.")
+            await message.answer("Роль владельца не меняется.")
             return
         if not can_change_role(role, db.get_role(target_id), new_role):
             return await deny(message)
         db.set_role(target_id, new_role, added_by=message.from_user.id)
-        await message.answer(f"✅ Роль «{ROLE_TITLES[new_role]}» выдана: <code>{target_id}</code>")
+        await message.answer(f"Роль «{ROLE_TITLES[new_role]}» выдана: {target_id}")
         try:
-            await bot.send_message(
-                target_id,
-                f"Вам выдана роль «{ROLE_TITLES[new_role]}». Меню: /start",
-                reply_markup=main_reply_kb(new_role, cfg.webapp_url),
-            )
+            await bot.send_message(target_id, f"Вам выдана роль «{ROLE_TITLES[new_role]}». Меню: /menu",
+                                   reply_markup=main_reply_kb(new_role, cfg.webapp_url))
         except TelegramAPIError:
             await message.answer("Пользователь ещё не запускал бота, уведомление не доставлено.")
         await team_view(message, role)
@@ -1286,62 +1367,87 @@ def build_router(cfg: Config, db: Database) -> Router:
             pass
         await team_view(callback, role)
 
-    # ------------------------------------------------------------------
-    # Выдача VIP вручную (админ+)
-    # ------------------------------------------------------------------
-    @router.callback_query(F.data == "a:gvip")
-    async def on_gvip(callback: CallbackQuery, role: str, state: FSMContext) -> None:
+    @router.callback_query(F.data.regexp(r"^a:sales:\d+$"))
+    async def on_sales(callback: CallbackQuery, role: str) -> None:
         if not at_least(role, ADMIN):
             return await deny(callback)
+        total = db.count_sales()
+        page, pages, offset = page_bounds(total, int(callback.data.split(":")[-1]), 8)
+        sales = db.list_sales(limit=8, offset=offset)
+        lines = [f"Продажи · {total}"]
+        rows: list[list[InlineKeyboardButton]] = []
+        for s in sales:
+            what = s["film_title"] if s["kind"] == "film" else "Пополнение"
+            lines.append(f"#{s['id']} · {esc(what)} · {s['amount']} звёзд · {s['user_id']}")
+            rows.append([btn(f"Вернуть #{s['id']}", f"sl:ask:{s['id']}")])
+        if not sales:
+            lines.append("\nПродаж пока нет.")
+        nav = pager("a:sales", page, pages)
+        if nav:
+            rows.append(nav)
+        rows.append([btn("Назад", "a:panel")])
+        await safe_show(callback, "\n".join(lines), rows_kb(rows))
         await callback.answer()
-        await state.clear()
-        await state.set_state(VipGrant.wait_id)
-        await callback.message.answer("Пришлите Telegram ID пользователя или перешлите его сообщение.\n/cancel — отмена")
 
-    @router.message(VipGrant.wait_id)
-    async def on_gvip_id(message: Message, state: FSMContext) -> None:
-        target_id = extract_user_id(message)
-        if target_id is None:
-            await message.answer("Нужен числовой ID или пересланное сообщение.")
+    @router.callback_query(F.data.regexp(r"^sl:ask:\d+$"))
+    async def on_refund_ask(callback: CallbackQuery, role: str) -> None:
+        if not at_least(role, ADMIN):
+            return await deny(callback)
+        p = db.get_payment(int(callback.data.split(":")[-1]))
+        if not p or p["refunded"]:
+            await callback.answer("Платёж не найден или уже возвращён", show_alert=True)
             return
-        await state.update_data(target_id=target_id)
-        await state.set_state(VipGrant.wait_days)
-        await message.answer(
-            f"Пользователь <code>{target_id}</code>. Выберите срок:",
-            reply_markup=rows_kb([[btn(f"{t}", f"gvd:{d}", icon="gift", style="success")]
-                                  for d, (t, _) in VIP_PLANS.items()]),
+        await callback.answer()
+        await safe_show(
+            callback,
+            f"Вернуть {p['amount']} звёзд пользователю {p['user_id']}?",
+            rows_kb([[btn("Да, вернуть", f"sl:ok:{p['id']}"), btn("Нет", "a:sales:0")]]),
         )
 
-    @router.callback_query(VipGrant.wait_days, F.data.startswith("gvd:"))
-    async def on_gvip_days(callback: CallbackQuery, role: str, bot: Bot, state: FSMContext) -> None:
-        days = int(callback.data.split(":")[1])
-        target_id = (await state.get_data())["target_id"]
-        await state.clear()
-        until = db.grant_vip(target_id, days)
-        await callback.answer("VIP выдан")
-        await callback.message.answer(f"💎 VIP выдан <code>{target_id}</code> до {fmt_date(until)}.")
+    @router.callback_query(F.data.regexp(r"^sl:ok:\d+$"))
+    async def on_refund(callback: CallbackQuery, role: str, bot: Bot) -> None:
+        if not at_least(role, ADMIN):
+            return await deny(callback)
+        p = db.get_payment(int(callback.data.split(":")[-1]))
+        if not p or p["refunded"] or not p["charge_id"]:
+            await callback.answer("Платёж не найден", show_alert=True)
+            return
+        if p["kind"] == "topup" and db.balance(p["user_id"]) < p["amount"]:
+            await callback.answer("На балансе пользователя недостаточно звёзд", show_alert=True)
+            return
         try:
-            await bot.send_message(target_id, f"💎 Вам выдан VIP на {VIP_PLANS[days][0]}. Приятного просмотра!")
+            await bot.refund_star_payment(user_id=p["user_id"], telegram_payment_charge_id=p["charge_id"])
+        except TelegramAPIError as err:
+            log.warning("возврат не выполнен: %s", err)
+            await callback.answer("Telegram отклонил возврат", show_alert=True)
+            return
+        db.refund_payment(p["id"])
+        await callback.answer("Возврат выполнен")
+        try:
+            await bot.send_message(p["user_id"], f"Оплата {p['amount']} звёзд возвращена.")
         except TelegramAPIError:
             pass
+        await safe_show(callback, "Возврат выполнен.", rows_kb([[btn("К продажам", "a:sales:0")]]))
 
-    # ------------------------------------------------------------------
-    # Статистика
-    # ------------------------------------------------------------------
     @router.callback_query(F.data == "a:stats")
-    async def on_stats(callback: CallbackQuery, role: str) -> None:
+    async def on_stats(callback: CallbackQuery, role: str, bot: Bot) -> None:
         if not at_least(role, ADMIN):
             return await deny(callback)
         s = db.stats()
+        try:
+            bot_balance = str((await bot.get_my_star_balance()).amount)
+        except TelegramAPIError:
+            bot_balance = "недоступно"
         text = (
-            "📊 <b>Статистика</b>\n━━━━━━━━━━━━━━━\n"
-            f"Фильмов: {s['films']} · показано: {s['active']} · VIP: {s['vip']}\n"
+            "Статистика\n"
+            f"Фильмов: {s['films']} (в каталоге: {s['active']})\n"
             f"Просмотров: {s['views']}\n"
-            f"Пользователей: {s['users']} · сотрудников: {s['staff']}\n"
-            f"VIP-подписчиков: {s['vip_users']}\n"
-            f"Оплат: {s['payments']} · заработано: {s['stars']} ⭐"
+            f"Пользователей: {s['users']}\n"
+            f"Сотрудников: {s['staff']}\n\n"
+            f"Выручка за звёзды: {s['revenue']}\n"
+            f"Баланс бота в Telegram: {bot_balance} звёзд"
         )
-        await safe_show(callback, text, rows_kb([[btn("Назад", "a:panel", icon="back")]]))
+        await safe_show(callback, text, rows_kb([[btn("Продажи", "a:sales:0")], [btn("Назад", "a:panel")]]))
         await callback.answer()
 
     @router.callback_query(F.data == "a:panel")
@@ -1353,196 +1459,28 @@ def build_router(cfg: Config, db: Database) -> Router:
         await callback.answer()
 
     # ------------------------------------------------------------------
-    # VIP: покупка за Telegram Stars
-    # ------------------------------------------------------------------
-    @router.callback_query(F.data == "vip:menu")
-    async def on_vip_menu(callback: CallbackQuery, role: str) -> None:
-        await show_vip(callback, role, callback.from_user.id)
-
-    @router.callback_query(F.data.regexp(r"^vip:buy:\d+$"))
-    async def on_vip_buy(callback: CallbackQuery, bot: Bot) -> None:
-        days = int(callback.data.split(":")[-1])
-        if days not in VIP_PLANS:
-            return await callback.answer("Тариф недоступен", show_alert=True)
-        title, stars = VIP_PLANS[days]
-        await callback.answer()
-        await bot.send_invoice(
-            chat_id=callback.message.chat.id,
-            title=f"VIP-подписка · {title}",
-            description="Доступ ко всем закрытым фильмам каталога.",
-            payload=f"vip:{days}:{callback.from_user.id}",
-            provider_token="",  # Telegram Stars не требуют платёжного провайдера
-            currency="XTR",
-            prices=[LabeledPrice(label=f"VIP · {title}", amount=stars)],
-        )
-
-    @router.pre_checkout_query()
-    async def on_pre_checkout(query: PreCheckoutQuery) -> None:
-        ok = False
-        try:
-            kind, days_raw, uid_raw = query.invoice_payload.split(":")
-            days = int(days_raw)
-            ok = (kind == "vip" and days in VIP_PLANS and int(uid_raw) == query.from_user.id
-                  and query.total_amount == VIP_PLANS[days][1])
-        except (ValueError, KeyError):
-            ok = False
-        await query.answer(ok=ok, error_message=None if ok else "Тариф недоступен, попробуйте позже.")
-
-    @router.message(F.successful_payment)
-    async def on_paid(message: Message) -> None:
-        sp = message.successful_payment
-        days = int(sp.invoice_payload.split(":")[1])
-        uid = message.from_user.id
-        if db.record_payment(uid, days, sp.total_amount, sp.telegram_payment_charge_id):
-            until = db.grant_vip(uid, days)
-        else:  # повторное уведомление — не выдаём дважды
-            until = db.vip_until(uid)
-        await message.answer(
-            "💎 <b>Оплата прошла, VIP активирован!</b>\n━━━━━━━━━━━━━━━\n"
-            f"Срок: {VIP_PLANS[days][0]}\nДоступ до: <b>{fmt_date(until)}</b>\n\n"
-            "Закрытые фильмы теперь открыты.",
-            reply_markup=rows_kb([[btn("В каталог", "m:catalog", icon="catalog", style="primary")]]),
-        )
-
-    # ------------------------------------------------------------------
-    # Каталог и карточки (для всех)
-    # ------------------------------------------------------------------
-    @router.callback_query(F.data.regexp(r"^cat:\d+$"))
-    async def on_catalog_page(callback: CallbackQuery) -> None:
-        view = catalog_view(int(callback.data.split(":")[1]))
-        if view is None:
-            return await callback.answer("Каталог пуст", show_alert=True)
-        await safe_show(callback, view[0], view[1])
-        await callback.answer()
-
-    @router.callback_query(F.data.regexp(r"^f:\d+$"))
-    async def on_film_button(callback: CallbackQuery, role: str, bot: Bot) -> None:
-        film = db.get_film(int(callback.data.split(":")[1]))
-        if not film or not film["is_active"]:
-            return await callback.answer("Фильм недоступен", show_alert=True)
-        if not has_access(role, callback.from_user.id, film):
-            await callback.answer()
-            await callback.message.answer(vip_locked_text(film), reply_markup=rows_kb([
-                [btn("Оформить VIP", "vip:menu", icon="vip", style="primary")]]))
-            return
-        db.add_view(film["id"])
-        await callback.answer()
-        await send_film(bot, callback.message.chat.id, db.get_film(film["id"]))
-
-    @router.callback_query(F.data.regexp(r"^sim:\d+$"))
-    async def on_similar(callback: CallbackQuery) -> None:
-        film = db.get_film(int(callback.data.split(":")[1]))
-        if not film:
-            return await callback.answer("Фильм не найден", show_alert=True)
-        films = db.list_films(active=True, limit=1000)
-        similar = rank_films(films, film["title"], min_score=0.3, limit=6, exclude_id=film["id"])
-        await callback.answer()
-        if not similar:
-            await callback.message.answer("Похожих фильмов пока нет.")
-            return
-        await callback.message.answer(f"🧩 <b>Похожие на «{esc(film['title'])}»</b>",
-                                      reply_markup=rows_kb(films_grid(similar)))
-
-    @router.callback_query(F.data.in_({"m:home", "m:catalog", "m:search", "m:top"}))
-    async def on_inline_nav(callback: CallbackQuery, role: str, state: FSMContext) -> None:
-        await callback.answer()
-        await state.clear()
-        action = callback.data.split(":")[1]
-        if action == "home":
-            await show_home(callback.message, role, callback.from_user.id)
-        elif action == "catalog":
-            await show_catalog(callback.message, 0)
-        elif action == "top":
-            await show_top(callback.message)
-        else:
-            await state.set_state(Search.query)
-            await callback.message.answer("🔍 Напишите название фильма. /cancel — выход")
-
-    @router.callback_query(F.data == "noop")
-    async def on_noop(callback: CallbackQuery) -> None:
-        await callback.answer()
-
-    # ------------------------------------------------------------------
-    # Служебное: определить ID кастомного эмодзи (для EMOJI_IDS)
-    # ------------------------------------------------------------------
-    @router.message(lambda m: bool(m.entities) and any(e.type == "custom_emoji" for e in m.entities))
-    async def on_emoji_probe(message: Message, role: str, state: FSMContext) -> None:
-        if not at_least(role, ADMIN):
-            return
-        ids = [e.custom_emoji_id for e in message.entities if e.type == "custom_emoji"]
-        await message.answer(
-            "ID премиум-эмодзи:\n" + "\n".join(f"<code>{i}</code>" for i in ids) +
-            "\n\nДобавьте их в EMOJI_IDS, например: {\"play\": \"<id>\"}"
-        )
-
-    # ------------------------------------------------------------------
-    # Неизвестный текст: подсказка
+    # Неизвестный текст
     # ------------------------------------------------------------------
     @router.message(F.text)
     async def on_fallback(message: Message, role: str, state: FSMContext) -> None:
         if await state.get_state() is None:
-            await message.answer("Не понял. Используйте кнопки меню ниже.",
-                                 reply_markup=main_reply_kb(role, cfg.webapp_url))
+            await message.answer("Выберите раздел в меню.", reply_markup=main_reply_kb(role, cfg.webapp_url))
 
     return router
 
 
-def extract_user_id(message: Message) -> int | None:
-    origin = message.forward_origin
-    if isinstance(origin, MessageOriginUser):
-        return origin.sender_user.id
-    if message.text and message.text.strip().isdigit():
-        return int(message.text.strip())
-    return None
-
-
 # ============================================================================
-# HTTP: Mini App, API, стрим видео
+# HTTP: вебхук, Mini App, API
 # ============================================================================
 def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher, bot_username: str | None) -> web.Application:
-    app = web.Application()
+    app = web.Application(client_max_size=1024 * 64)
+    secret = hashlib.sha256(b"stream:" + cfg.bot_token.encode()).digest()
 
-    async def open_session(app_: web.Application) -> None:
-        app_["http"] = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_read=60))
-
-    async def close_session(app_: web.Application) -> None:
-        await app_["http"].close()
-
-    app.on_startup.append(open_session)
-    app.on_cleanup.append(close_session)
-
-    def viewer(request: web.Request) -> dict | None:
-        """Пользователь Mini App из подписанного initData (заголовок или ?init= для видео)."""
-        init = request.headers.get("X-Telegram-Init-Data") or request.query.get("init", "")
-        return check_init_data(init, cfg.bot_token)
-
-    def viewer_access(request: web.Request) -> tuple[int | None, str]:
-        user = viewer(request)
-        if not user:
-            return None, USER
-        uid = int(user["id"])
-        role = OWNER if uid == cfg.owner_id else db.get_role(uid)
-        return uid, role
-
-    def has_access(uid: int | None, role: str, film: dict) -> bool:
-        if not film["is_vip"]:
-            return True
-        return at_least(role, EDITOR) or (uid is not None and db.is_vip(uid))
-
-    def public_film(film: dict, uid: int | None, role: str) -> dict:
-        locked = not has_access(uid, role, film)
-        return {
-            "id": film["id"],
-            "title": film["title"],
-            "kind": film["kind"],
-            "vip": bool(film["is_vip"]),
-            "locked": locked,
-            # ссылку и видео отдаём только тем, у кого есть доступ
-            "url": None if locked or film["kind"] != "link" else film["url"],
-            "playable": film["kind"] == "video" and not locked,
-            "hasBanner": bool(film["photo_file_id"]),
-            "views": film["views"],
-        }
+    async def authed_user(request: web.Request) -> dict | None:
+        user = verify_init_data(request.headers.get("X-Init-Data", ""), cfg.bot_token)
+        if user:
+            db.touch_user(int(user["id"]), user.get("username"), user.get("first_name"))
+        return user
 
     async def health(_: web.Request) -> web.Response:
         return web.Response(text="ok")
@@ -1553,37 +1491,33 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher, bot_username:
     async def api_config(_: web.Request) -> web.Response:
         return web.json_response({
             "botUsername": bot_username,
-            "plans": [{"days": d, "title": t, "stars": s} for d, (t, s) in VIP_PLANS.items()],
+            "background": cfg.background_url,
+            "topups": list(TOPUP_OPTIONS),
         })
 
-    async def api_me(request: web.Request) -> web.Response:
-        uid, role = viewer_access(request)
-        if uid is None:
-            return web.json_response({"guest": True, "role": USER, "vip": False})
-        until = db.vip_until(uid)
-        return web.json_response({
-            "guest": False,
-            "id": uid,
-            "role": role,
-            "vip": bool(until) or at_least(role, EDITOR),
-            "vipUntil": fmt_date(until) if until else None,
-        })
-
-    async def api_films(request: web.Request) -> web.Response:
-        uid, role = viewer_access(request)
-        films = [public_film(f, uid, role) for f in db.list_films(active=True, limit=500)]
+    async def api_films(_: web.Request) -> web.Response:
+        films = [
+            {
+                "id": f["id"],
+                "title": f["title"],
+                "kind": f["kind"],
+                "price": f["price"],
+                "views": f["views"],
+                "hasBanner": bool(f["photo_file_id"]),
+            }
+            for f in db.list_films(active=True, limit=500)
+        ]
         return web.json_response(films, headers={"Cache-Control": "no-store"})
 
-    async def api_search(request: web.Request) -> web.Response:
-        uid, role = viewer_access(request)
-        query = request.query.get("q", "").strip()[:60]
-        if not query:
-            return web.json_response({"results": [], "exact": True})
-        films = db.list_films(active=True, limit=1000)
-        results, exact = smart_search(films, query, limit=30)
+    async def api_me(request: web.Request) -> web.Response:
+        user = await authed_user(request)
+        if not user:
+            return web.json_response({"error": "auth"}, status=401)
+        uid = int(user["id"])
         return web.json_response({
-            "results": [public_film(f, uid, role) for f in results],
-            "exact": exact,
+            "name": user.get("first_name") or "",
+            "balance": db.balance(uid),
+            "owned": db.owned_film_ids(uid),
         }, headers={"Cache-Control": "no-store"})
 
     async def api_banner(request: web.Request) -> web.Response:
@@ -1603,65 +1537,98 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher, bot_username:
         return web.Response(body=buf.getvalue(), content_type="image/jpeg",
                             headers={"Cache-Control": "public, max-age=3600"})
 
-    async def api_video(request: web.Request) -> web.StreamResponse:
-        """Стрим видео из Telegram с поддержкой перемотки (Range). Лимит Bot API — 20 МБ."""
+    async def load_film(request: web.Request) -> dict | None:
         try:
             film = db.get_film(int(request.match_info["film_id"]))
         except ValueError:
-            film = None
-        if not film or not film["is_active"] or film["kind"] != "video":
+            return None
+        return film if film and film["is_active"] else None
+
+    async def api_play(request: web.Request) -> web.Response:
+        user = await authed_user(request)
+        if not user:
+            return web.json_response({"error": "auth"}, status=401)
+        film = await load_film(request)
+        if not film:
             return web.json_response({"error": "not_found"}, status=404)
-
-        uid, role = viewer_access(request)
-        if not has_access(uid, role, film):
-            return web.json_response({"error": "vip"}, status=403)
-
+        uid = int(user["id"])
+        role = OWNER if uid == cfg.owner_id else db.get_role(uid)
+        if not has_access(db, role, uid, film):
+            return web.json_response({"error": "locked", "price": film["price"]}, status=403)
+        db.add_view(film["id"])
+        if film["kind"] == "link":
+            return web.json_response({"kind": "link", "src": embed_url(film["url"]), "url": film["url"]})
         try:
-            tg_file = await bot.get_file(film["video_file_id"])
-        except TelegramBadRequest:
-            return web.json_response({"error": "too_big"}, status=413)
-        except TelegramAPIError:
-            return web.json_response({"error": "unavailable"}, status=502)
+            await ensure_media(bot, cfg.media_dir, film)
+        except MediaTooLarge:
+            return web.json_response({"error": "too_large"}, status=413)
+        except TelegramAPIError as err:
+            log.warning("видео не загружено: %s", err)
+            return web.json_response({"error": "media"}, status=502)
+        token = stream_token(secret, film["id"])
+        return web.json_response({"kind": "video", "src": f"/api/stream/{film['id']}?t={token}"})
 
-        if not request.headers.get("Range") or request.headers.get("Range", "").startswith("bytes=0-"):
-            db.add_view(film["id"])
+    async def api_stream(request: web.Request) -> web.StreamResponse:
+        film = await load_film(request)
+        token = request.query.get("t", "")
+        if not film or film["kind"] != "video" or not check_stream_token(secret, film["id"], token):
+            return web.Response(status=403, text="forbidden")
+        path = cfg.media_dir / (hashlib.sha1(film["video_file_id"].encode()).hexdigest() + ".mp4")
+        if not path.exists():
+            return web.Response(status=404, text="not cached")
+        return web.FileResponse(path, headers={"Content-Type": "video/mp4", "Cache-Control": "private, max-age=600"})
 
-        upstream_headers = {}
-        if "Range" in request.headers:
-            upstream_headers["Range"] = request.headers["Range"]
-        url = f"https://api.telegram.org/file/bot{cfg.bot_token}/{tg_file.file_path}"
+    async def api_buy(request: web.Request) -> web.Response:
+        user = await authed_user(request)
+        if not user:
+            return web.json_response({"error": "auth"}, status=401)
+        film = await load_film(request)
+        if not film:
+            return web.json_response({"error": "not_found"}, status=404)
+        uid = int(user["id"])
+        if has_access(db, OWNER if uid == cfg.owner_id else db.get_role(uid), uid, film):
+            return web.json_response({"ok": True, "owned": True, "balance": db.balance(uid)})
+        if db.pay_film_with_balance(uid, film):
+            return web.json_response({"ok": True, "owned": True, "balance": db.balance(uid)})
+        link = await bot.create_invoice_link(
+            title=short(film["title"], 32),
+            description=f"Открытие фильма «{short(film['title'], 200)}»",
+            payload=f"film:{film['id']}",
+            currency="XTR",
+            prices=[LabeledPrice(label=short(film["title"], 32), amount=film["price"])],
+        )
+        return web.json_response({"ok": False, "invoice": link})
+
+    async def api_topup(request: web.Request) -> web.Response:
+        user = await authed_user(request)
+        if not user:
+            return web.json_response({"error": "auth"}, status=401)
         try:
-            up = await app["http"].get(url, headers=upstream_headers)
-        except aiohttp.ClientError as err:
-            log.warning("видео недоступно: %s", err)
-            return web.json_response({"error": "unavailable"}, status=502)
-        try:
-            if up.status >= 400:
-                return web.json_response({"error": "upstream"}, status=502)
-            resp = web.StreamResponse(status=up.status)
-            resp.headers["Content-Type"] = up.headers.get("Content-Type", "video/mp4")
-            for h in ("Content-Length", "Content-Range"):
-                if h in up.headers:
-                    resp.headers[h] = up.headers[h]
-            resp.headers["Accept-Ranges"] = "bytes"
-            resp.headers["Cache-Control"] = "private, max-age=300"
-            await resp.prepare(request)
-            async for chunk in up.content.iter_chunked(64 * 1024):
-                await resp.write(chunk)
-            await resp.write_eof()
-            return resp
-        finally:
-            up.release()
+            amount = int((await request.json()).get("amount"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return web.json_response({"error": "bad_amount"}, status=400)
+        if amount not in TOPUP_OPTIONS:
+            return web.json_response({"error": "bad_amount"}, status=400)
+        link = await bot.create_invoice_link(
+            title=f"Пополнение {amount} звёзд",
+            description="Звёзды зачисляются на баланс и тратятся на VIP-фильмы",
+            payload=f"topup:{amount}",
+            currency="XTR",
+            prices=[LabeledPrice(label=f"Пополнение {amount}", amount=amount)],
+        )
+        return web.json_response({"invoice": link})
 
     app.router.add_get("/health", health)
     app.router.add_get("/", mini_app)
     app.router.add_get("/app", mini_app)
     app.router.add_get("/api/config", api_config)
-    app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/films", api_films)
-    app.router.add_get("/api/search", api_search)
+    app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/banner/{film_id}", api_banner)
-    app.router.add_get("/api/video/{film_id}", api_video)
+    app.router.add_post("/api/films/{film_id}/play", api_play)
+    app.router.add_get("/api/stream/{film_id}", api_stream)
+    app.router.add_post("/api/films/{film_id}/buy", api_buy)
+    app.router.add_post("/api/topup", api_topup)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot, secret_token=cfg.webhook_secret).register(
         app, path=cfg.webhook_path
@@ -1673,11 +1640,10 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher, bot_username:
 # Запуск
 # ============================================================================
 async def main() -> None:
-    global EMOJI_IDS
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = load_config()
-    EMOJI_IDS = cfg.emoji_ids
     db = Database(cfg.db_path)
+    cfg.media_dir.mkdir(parents=True, exist_ok=True)
 
     for admin_id in cfg.initial_admins:
         if admin_id != cfg.owner_id and db.get_user(admin_id) is None:
@@ -1694,14 +1660,12 @@ async def main() -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
         BotCommand(command="menu", description="Главное меню"),
-        BotCommand(command="vip", description="VIP-подписка"),
         BotCommand(command="admin", description="Админ-панель"),
+        BotCommand(command="add", description="Добавить фильм"),
         BotCommand(command="cancel", description="Отмена"),
     ])
     if cfg.webapp_url:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="Фильмы", web_app=WebAppInfo(url=cfg.webapp_url))
-        )
+        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Фильмы", web_app=WebAppInfo(url=cfg.webapp_url)))
 
     runner = web.AppRunner(build_web(cfg, db, bot, dp, me.username))
     await runner.setup()
@@ -1717,12 +1681,8 @@ async def main() -> None:
     try:
         if cfg.mode == "webhook":
             url = f"{cfg.public_url}{cfg.webhook_path}"
-            await bot.set_webhook(
-                url,
-                secret_token=cfg.webhook_secret,
-                allowed_updates=dp.resolve_used_update_types(),
-                drop_pending_updates=False,
-            )
+            await bot.set_webhook(url, secret_token=cfg.webhook_secret,
+                                  allowed_updates=dp.resolve_used_update_types(), drop_pending_updates=False)
             log.info("webhook установлен: %s", url)
         else:
             await bot.delete_webhook(drop_pending_updates=False)
