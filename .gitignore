@@ -1,17 +1,16 @@
-# зависимости
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
 # секреты: токены и ID хранятся в переменных окружения, а не в репозитории
 .env
-.env.*
-!.env.example
 
-# база данных и загруженные данные
+# база данных
 data/
 *.db
 *.db-shm
 *.db-wal
 
-# логи и служебное
-npm-debug.log*
 .DS_Store

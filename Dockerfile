@@ -1,26 +1,25 @@
-# Образ для bothost (путь приложения /app, порт 3000, БД /app/data/film.db).
-# Нативных зависимостей нет: SQLite — встроенный node:sqlite.
-FROM node:22-bookworm-slim
+# Образ для bothost: приложение в /app, порт 3000, БД в /app/data/film.db
+FROM python:3.12-slim
 
-ENV NODE_ENV=production \
+ENV PYTHONUNBUFFERED=1 \
     PORT=3000 \
     DB_PATH=/app/data/film.db
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src ./src
+COPY main.py index.html ./
 
-# Папка данных принадлежит непривилегированному пользователю node
-RUN mkdir -p /app/data && chown -R node:node /app/data
-USER node
+# Папка данных принадлежит непривилегированному пользователю
+RUN useradd -m app && mkdir -p /app/data && chown -R app /app
+USER app
 
 EXPOSE 3000
 VOLUME ["/app/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD ["python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT', '3000'), timeout=4)"]
 
-CMD ["npm", "start"]
+CMD ["python", "main.py"]
