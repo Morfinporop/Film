@@ -66,6 +66,7 @@ BITRATE_KBPS = {144: 120, 240: 300, 360: 800, 480: 1400, 720: 2500, 1080: 5000}
 AUDIO_KBPS = {144: 64, 240: 64, 360: 96}
 BOT_UPLOAD_LIMIT = 20 * 1024 * 1024             # лимит Bot API на скачивание файла (cloud API)
 UPLOAD_LIMIT = 2 * 1024 ** 3                    # максимум файла при загрузке через Mini App: 2 ГБ
+CHUNK_SIZE = 8 * 1024 * 1024                    # видео уходит частями: прокси не держит долгие запросы
 SUB_EXT = {".srt", ".vtt", ".ass", ".ssa", ".sub"}
 VIP_MONTH_DAYS, VIP_YEAR_DAYS = 30, 365
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
@@ -652,8 +653,12 @@ class Transcoder:
             except asyncio.CancelledError:
                 raise
             except Exception as err:  # noqa: BLE001
-                log.exception("обработка фильма %s упала", film_id)
-                self.db.set_status(film_id, "failed", str(err)[:300])
+                if self.db.get_film(film_id) is None:
+                    shutil.rmtree(self.media_dir / str(film_id), ignore_errors=True)
+                    log.info("фильм %s удалён во время обработки", film_id)
+                else:
+                    log.exception("обработка фильма %s упала", film_id)
+                    self.db.set_status(film_id, "failed", str(err)[:300])
             finally:
                 self.queue.task_done()
 
@@ -686,6 +691,8 @@ class Transcoder:
         await extract_subtitles(src, folder / "subs")
         variants: list[tuple[int, int, int]] = []
         for h in ladder:
+            if self.db.get_film(film_id) is None:  # фильм удалили во время обработки
+                return
             w = max(2, round(width * h / height / 2) * 2)
             out = folder / f"{h}p"
             out.mkdir(exist_ok=True)
@@ -703,6 +710,8 @@ class Transcoder:
                 "-hls_segment_filename", str(out / "seg_%04d.ts"),
                 str(out / "index.m3u8"),
             ])
+            if self.db.get_film(film_id) is None:
+                return
             if not (out / "index.m3u8").exists():
                 raise RuntimeError(f"Не удалось собрать {h}p: {err.decode(errors='replace')[-200:]}")
             variants.append((h, w, kbps))
@@ -926,6 +935,34 @@ def apply_sale(cfg: Config, db: Database, uid: int, kind: str, amount: int) -> N
 # ============================================================================
 # HTTP: Mini App, API
 # ============================================================================
+class ChunkUploads:
+    """Загрузка видео частями: каждая часть — отдельный короткий запрос, пишется в свой участок файла."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.items: dict[str, dict] = {}
+
+    def create(self, owner: int, size: int, name: str) -> str:
+        self.root.mkdir(parents=True, exist_ok=True)
+        uid = uuid.uuid4().hex
+        path = self.root / uid
+        with open(path, "wb") as fh:
+            fh.truncate(size)
+        total = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
+        self.items[uid] = {"owner": owner, "size": size, "path": path, "name": name,
+                           "total": total, "received": set()}
+        return uid
+
+    def get(self, uid: str, owner: int) -> dict | None:
+        item = self.items.get(uid)
+        return item if item and item["owner"] == owner else None
+
+    def discard(self, uid: str) -> None:
+        item = self.items.pop(uid, None)
+        if item:
+            item["path"].unlink(missing_ok=True)
+
+
 class Api:
     """Контекст запроса: пользователь, роль, VIP."""
 
@@ -1014,29 +1051,34 @@ def _err(code: str, status: int) -> web.Response:
 
 async def _read_multipart(request: web.Request, tmp_dir: Path) -> tuple[dict[str, str], dict[str, tuple[Path, str]]]:
     """Потоковая запись файлов на диск (память не растёт), каждый файл не больше UPLOAD_LIMIT."""
+    if not request.content_type.startswith("multipart/"):
+        raise web.HTTPBadRequest(text="expected multipart/form-data")
     if request.content_length and request.content_length > UPLOAD_LIMIT + 16 * 1024 * 1024:
         raise web.HTTPRequestEntityTooLarge(max_size=UPLOAD_LIMIT, actual_size=request.content_length)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     fields: dict[str, str] = {}
     files: dict[str, tuple[Path, str]] = {}
-    reader = await request.multipart()
-    async for part in reader:
-        if part.filename:
-            target = tmp_dir / f"{uuid.uuid4().hex}"
-            size = 0
-            with open(target, "wb") as fh:
-                while chunk := await part.read_chunk(1 << 20):
-                    size += len(chunk)
-                    if size > UPLOAD_LIMIT:
-                        fh.close()
-                        target.unlink(missing_ok=True)
-                        for path, _ in files.values():
-                            path.unlink(missing_ok=True)
-                        raise web.HTTPRequestEntityTooLarge(max_size=UPLOAD_LIMIT, actual_size=size)
-                    fh.write(chunk)
-            files[part.name] = (target, part.filename)
-        else:
-            fields[part.name] = (await part.text()).strip()
+    try:
+        reader = await request.multipart()
+        async for part in reader:
+            if part.filename:
+                target = tmp_dir / f"{uuid.uuid4().hex}"
+                size = 0
+                with open(target, "wb") as fh:
+                    while chunk := await part.read_chunk(1 << 20):
+                        size += len(chunk)
+                        if size > UPLOAD_LIMIT:
+                            fh.close()
+                            target.unlink(missing_ok=True)
+                            raise web.HTTPRequestEntityTooLarge(max_size=UPLOAD_LIMIT, actual_size=size)
+                        fh.write(chunk)
+                files[part.name] = (target, part.filename)
+            else:
+                fields[part.name] = (await part.text()).strip()
+    except BaseException:
+        for path, _ in files.values():
+            path.unlink(missing_ok=True)
+        raise
     return fields, files
 
 
@@ -1077,6 +1119,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
     app = web.Application(client_max_size=UPLOAD_LIMIT + 16 * 1024 * 1024)
     api = Api(cfg, db, bot, transcoder)
     media_root = cfg.media_dir
+    uploads = ChunkUploads(media_root / "tmp")
 
     def staff_user(request: web.Request, minimum: str) -> tuple[dict | None, web.Response | None]:
         user = api.user_of(request)
@@ -1296,6 +1339,51 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                        "subtitles": list_subtitles(media_root / str(f["id"])) if f["kind"] == "video" else []}
                       for f in rows])
 
+    async def upload_init(request: web.Request) -> web.Response:
+        user, bad = staff_user(request, EDITOR)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+            size = int(body.get("size", 0))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if size <= 0:
+            return _err("bad_request", 400)
+        if size > UPLOAD_LIMIT:
+            return _err("too_large", 413)
+        uid = uploads.create(user["id"], size, str(body.get("name", ""))[:200])
+        total = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
+        return _json({"id": uid, "chunkSize": CHUNK_SIZE, "total": total})
+
+    async def upload_chunk(request: web.Request) -> web.Response:
+        user, bad = staff_user(request, EDITOR)
+        if bad:
+            return bad
+        item = uploads.get(request.match_info["uid"], user["id"])
+        if not item:
+            return _err("not_found", 404)
+        try:
+            index = int(request.match_info["index"])
+        except ValueError:
+            return _err("bad_request", 400)
+        if not 0 <= index < item["total"]:
+            return _err("bad_chunk", 400)
+        start = index * CHUNK_SIZE
+        expected = min(CHUNK_SIZE, item["size"] - start)
+        got = 0
+        with open(item["path"], "r+b") as fh:
+            fh.seek(start)
+            async for part in request.content.iter_chunked(1 << 20):
+                got += len(part)
+                if got > expected:
+                    return _err("bad_chunk", 400)
+                fh.write(part)
+        if got != expected:
+            return _err("bad_chunk", 400)
+        item["received"].add(index)
+        return _json({"ok": True, "received": len(item["received"]), "total": item["total"]})
+
     async def admin_create(request: web.Request) -> web.Response:
         user, bad = staff_user(request, EDITOR)
         if bad:
@@ -1309,8 +1397,13 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                 return _err("title_required", 400)
             if kind == "link" and not URL_RE.match(fields.get("url", "")):
                 return _err("bad_url", 400)
-            if kind == "video" and "video" not in files:
-                return _err("video_required", 400)
+            upload_item = None
+            if kind == "video":
+                upload_item = uploads.get(fields.get("uploadId", ""), user["id"])
+                if not upload_item:
+                    return _err("video_required", 400)
+                if len(upload_item["received"]) != upload_item["total"]:
+                    return _err("upload_incomplete", 400)
             if kind not in ("video", "link"):
                 return _err("bad_kind", 400)
             film_id = db.create_film(
@@ -1326,8 +1419,9 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             )
             folder = media_root / str(film_id)
             folder.mkdir(parents=True, exist_ok=True)
-            if "video" in files:
-                shutil.move(str(files["video"][0]), folder / "source.mp4")
+            if upload_item:
+                shutil.move(str(upload_item["path"]), folder / "source.mp4")
+                uploads.items.pop(fields["uploadId"], None)
             if "poster" in files:
                 dest = folder / f"poster{_poster_ext(files['poster'][1])}"
                 shutil.move(str(files["poster"][0]), dest)
@@ -1558,6 +1652,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("POST", "/api/pay/invoice", invoice),
         ("GET", "/api/admin/films", admin_films),
         ("POST", "/api/admin/films", admin_create),
+        ("POST", "/api/admin/uploads", upload_init),
+        ("PUT", "/api/admin/uploads/{uid}/{index}", upload_chunk),
         ("POST", "/api/admin/films/{id}/update", admin_update),
         ("POST", "/api/admin/films/{id}/poster", admin_poster),
         ("POST", "/api/admin/films/{id}/delete", admin_delete),
@@ -1588,6 +1684,7 @@ async def main() -> None:
     cfg = load_config()
     db = Database(cfg.db_path)
     cfg.media_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(cfg.media_dir / "tmp", ignore_errors=True)  # остатки прерванных загрузок
 
     for admin_id in cfg.initial_admins:
         if admin_id != cfg.owner_id and db.get_user(admin_id) is None:
