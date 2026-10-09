@@ -1,0 +1,19 @@
+{
+  "name": "film-bot",
+  "version": "1.0.0",
+  "description": "Telegram-бот каталога фильмов (ссылки и видео в Telegram) с Mini App; SQLite через node:sqlite",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/index.js",
+    "test": "node --test --disable-warning=ExperimentalWarning tests/*.test.js"
+  },
+  "dependencies": {
+    "grammy": "^1.46.0"
+  }
+}
