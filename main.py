@@ -189,6 +189,12 @@ def can_change_role(actor: str, target: str, new: str) -> bool:
 # ============================================================================
 # База данных (SQLite, стандартный модуль)
 # ============================================================================
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_films_active ON films (is_active, id);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
+CREATE INDEX IF NOT EXISTS idx_payments_user ON payments (user_id, kind, film_id);
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS films (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,7 +211,6 @@ CREATE TABLE IF NOT EXISTS films (
     CHECK (kind <> 'link'  OR url IS NOT NULL),
     CHECK (kind <> 'video' OR video_file_id IS NOT NULL)
 );
-CREATE INDEX IF NOT EXISTS idx_films_active ON films (is_active, id);
 
 CREATE TABLE IF NOT EXISTS users (
     tg_id       INTEGER PRIMARY KEY,
@@ -217,7 +222,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     last_seen   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
 
 CREATE TABLE IF NOT EXISTS payments (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,7 +234,6 @@ CREATE TABLE IF NOT EXISTS payments (
     refunded    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_payments_user ON payments (user_id, kind, film_id);
 """
 
 
@@ -242,16 +245,34 @@ class Database:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self.conn.executescript(SCHEMA)
-        # миграции для баз, созданных старыми версиями
+        self._migrate()
+
+    def _columns(self, table: str) -> set[str]:
+        return {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+
+    def _migrate(self) -> None:
+        """Приводит базу любой прошлой версии к текущей схеме. Данные не удаляются."""
+        # Старая таблица payments (подписки: days/stars) несовместима с платежами фильмов.
+        # Переименовываем её, а не удаляем.
+        legacy = self._columns("payments")
+        if legacy and "kind" not in legacy:
+            name = f"payments_legacy_{int(time.time())}"
+            self.conn.execute(f"ALTER TABLE payments RENAME TO {name}")
+            log.warning("старая таблица payments сохранена как %s", name)
+
+        self.conn.executescript(SCHEMA)  # только CREATE TABLE IF NOT EXISTS
+
+        # Колонки, которых не было в ранних версиях
         for table, column, ddl in (
             ("films", "owner_id", "ALTER TABLE films ADD COLUMN owner_id INTEGER"),
             ("films", "price", "ALTER TABLE films ADD COLUMN price INTEGER NOT NULL DEFAULT 0"),
             ("users", "balance", "ALTER TABLE users ADD COLUMN balance INTEGER NOT NULL DEFAULT 0"),
         ):
-            cols = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
-            if column not in cols:
+            if column not in self._columns(table):
                 self.conn.execute(ddl)
+
+        # Индексы создаём последними, когда все колонки на месте
+        self.conn.executescript(INDEXES)
 
     def close(self) -> None:
         self.conn.close()
