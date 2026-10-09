@@ -661,13 +661,20 @@ def sub_name(lang: str) -> str:
     return ISO3.get(code, code) or "und"
 
 
-def hls_ready(folder: Path) -> bool:
-    """Готово ли видео в нужном наборе качеств (LADDER) и все плейлисты на месте."""
+def target_ladder(height: int) -> list[int]:
+    """Какие качества нужны для исходника такой высоты: не апскейлим выше оригинала."""
+    sub = [h for h in LADDER if h <= height]
+    return sub or [LADDER[0]]
+
+
+def hls_ready(folder: Path, height: int = 0) -> bool:
+    """Готовы ли все нужные для этого исходника качества и плейлисты на месте."""
     master = folder / "master.m3u8"
     if not master.exists():
         return False
-    names = re.findall(r'NAME="(\d+p)"', master.read_text(encoding="utf-8", errors="replace"))
-    return sorted(names) == sorted(f"{h}p" for h in LADDER) and all((folder / n / "index.m3u8").exists() for n in names)
+    names = {int(n[:-1]) for n in re.findall(r'NAME="(\d+p)"', master.read_text(encoding="utf-8", errors="replace"))}
+    target = set(target_ladder(height)) if height else set(LADDER)
+    return target <= names and all((folder / f"{h}p" / "index.m3u8").exists() for h in names)
 
 
 def convert_subtitle(src: Path, dest: Path) -> None:
@@ -707,7 +714,13 @@ async def probe(src: Path) -> tuple[int, int, int]:
 
 
 class Transcoder:
-    """Одна фоновая очередь: скачивает файл из Telegram (если нужно) и строит HLS-качества."""
+    """Одна фоновая очередь: скачивает файл из Telegram (если нужно) и строит HLS-качества.
+
+    Качества собираются по очереди от самого лёгкого (144p) к тяжёлому. Как только готово
+    первое качество, фильм сразу открывается для просмотра (статус 'ready'), а остальные
+    качества доливаются в фон и подключаются к master-плейлисту по готовности — как у YouTube,
+    без ожидания полной обработки всех разрешений.
+    """
 
     def __init__(self, bot: Bot, db: Database, media_dir: Path) -> None:
         self.bot = bot
@@ -769,13 +782,26 @@ class Transcoder:
         if not height:
             raise RuntimeError("Файл не распознан как видео")
 
-        ladder = list(LADDER)  # всегда весь набор 144p-1080p; для низкого исходника качество увеличивается
-        # новые качества собираются в отдельной папке и заменяют старые только после успеха,
-        # поэтому при переобработке (например, после обновления бота) не остаётся мусора
+        # не кодируем качества выше исходника — не тратим время на бессмысленный апскейл
+        ladder = target_ladder(height)  # от лёгкого к тяжёлому: 144p первым
+
+        for old in folder.iterdir():
+            if old.is_dir() and re.fullmatch(r"\d+p", old.name) and old.name not in {f"{h}p" for h in ladder}:
+                shutil.rmtree(old, ignore_errors=True)
         build = folder / ".build"
         shutil.rmtree(build, ignore_errors=True)
         build.mkdir()
-        variants: list[tuple[int, int, int]] = []
+
+        def write_master(variants: list[tuple[int, int, int]]) -> None:
+            lines = ["#EXTM3U", "#EXT-X-VERSION:3"]
+            for h, w, kbps in sorted(variants):
+                lines.append(f'#EXT-X-STREAM-INF:BANDWIDTH={(kbps + 128) * 1000},RESOLUTION={w}x{h},NAME="{h}p"')
+                lines.append(f"{h}p/index.m3u8")
+            tmp = folder / "master.m3u8.tmp"
+            tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.replace(tmp, folder / "master.m3u8")  # атомарная подмена, не ломает тех, кто уже смотрит
+
+        done_variants: list[tuple[int, int, int]] = []
         for h in ladder:
             if self.db.get_film(film_id) is None:  # фильм удалили во время обработки
                 return
@@ -784,11 +810,12 @@ class Transcoder:
             out.mkdir(exist_ok=True)
             kbps = BITRATE_KBPS[h]
             akbps = AUDIO_KBPS.get(h, 128)
+            preset = "veryfast" if h >= 720 else "ultrafast"  # лёгкие качества собираем максимально быстро
             err = await _run([
                 "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
                 "-map", "0:v:0", "-map", "0:a:0?",
                 "-vf", f"scale={w}:{h}",
-                "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high",
+                "-c:v", "libx264", "-preset", preset, "-profile:v", "high", "-threads", "0",
                 "-b:v", f"{kbps}k", "-maxrate", f"{int(kbps * 1.1)}k", "-bufsize", f"{kbps * 2}k",
                 "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
                 "-c:a", "aac", "-b:a", f"{akbps}k", "-ac", "2",
@@ -800,23 +827,19 @@ class Transcoder:
                 return
             if not (out / "index.m3u8").exists():
                 raise RuntimeError(f"Не удалось собрать {h}p: {err.decode(errors='replace')[-200:]}")
-            variants.append((h, w, kbps))
+            dest = folder / f"{h}p"
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.move(str(out), dest)
+            done_variants.append((h, w, kbps))
+            write_master(done_variants)
+            if len(done_variants) == 1:  # первое (самое лёгкое) качество готово — фильм уже можно смотреть
+                self.db.update_film(film_id, status="ready", error=None,
+                                    duration=duration, width=width, height=height)
 
-        master = ["#EXTM3U", "#EXT-X-VERSION:3"]
-        for h, w, kbps in variants:
-            master.append(f'#EXT-X-STREAM-INF:BANDWIDTH={(kbps + 128) * 1000},RESOLUTION={w}x{h},NAME="{h}p"')
-            master.append(f"{h}p/index.m3u8")
-        (build / "master.m3u8").write_text("\n".join(master) + "\n", encoding="utf-8")
-        for old in folder.iterdir():  # старые качества и плейлист удаляем, исходник и субтитры остаются
-            if old.is_dir() and re.fullmatch(r"\d+p", old.name):
-                shutil.rmtree(old, ignore_errors=True)
-        (folder / "master.m3u8").unlink(missing_ok=True)
-        for new in build.iterdir():
-            os.replace(new, folder / new.name)
         shutil.rmtree(build, ignore_errors=True)
-
-        self.db.update_film(film_id, status="ready", error=None, duration=duration, width=width, height=height)
-        log.info("фильм %s готов: %s", film_id, [v[0] for v in variants])
+        if not done_variants:
+            raise RuntimeError("Не удалось собрать ни одного качества")
+        log.info("фильм %s готов полностью: %s", film_id, [v[0] for v in done_variants])
 
 
 STORAGE_EVERY = 6 * 3600          # как часто чистить, секунды
@@ -1110,10 +1133,19 @@ class Api:
                 "role": role, "vip_until": row.get("vip_until")}
 
     def vip_active(self, user: dict | None) -> bool:
+        """Есть ли у пользователя доступ к VIP-контенту (включая служебный доступ персонала)."""
         if not user:
             return False
         if at_least(user["role"], ADMIN):
             return True
+        until = parse_dt(user.get("vip_until"))
+        return bool(until and until > utcnow())
+
+    def real_vip(self, user: dict | None) -> bool:
+        """Есть ли у пользователя настоящая оплаченная VIP-подписка (без учёта роли персонала).
+        Используется для показа рекламы: персонал должен видеть ролики, чтобы проверять их работу."""
+        if not user:
+            return False
         until = parse_dt(user.get("vip_until"))
         return bool(until and until > utcnow())
 
@@ -1346,7 +1378,6 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             return _err("auth", 401)
         if api.locked(user, film):
             return _json({"error": "vip_required"}, 403)
-        db.add_view(film["id"])
         db.touch_watch(user["id"], film["id"])
         if film["kind"] == "link":
             return _json({"kind": "link", "src": embed_url(film["url"]), "url": film["url"]})
@@ -1354,8 +1385,11 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         pos = float(watch.get("position") or 0)
         dur = float(watch.get("duration") or film["duration"] or 0)
         resume_at = pos if 5 < pos < dur - 15 else 0
+        # рекламу не показываем только настоящим платным VIP, а не всем, у кого есть
+        # служебный доступ к контенту (админ/владелец) — иначе персонал не сможет
+        # проверить, что ролики вообще работают
         ads = []
-        if not api.vip_active(user) and dur >= 30:
+        if not api.real_vip(user) and dur >= 30:
             ads = [{"id": a["id"], "src": f"/api/ad/{a['id']}/video", "link": a["link"], "at": a["start_sec"]}
                    for a in db.list_ads()]
         token = make_media_token(api.secret, film["id"])
@@ -1817,6 +1851,18 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         db.save_progress(user["id"], film["id"], pos, dur)
         return _json({"ok": True})
 
+    async def complete_view(request: web.Request) -> web.Response:
+        """Засчитывает просмотр фильма только когда зритель досмотрел ролик до конца
+        (вызывается с фронтенда по событию 'ended' видео), а не при каждом открытии плеера."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        film = _film_or_none(request)
+        if not film:
+            return _err("not_found", 404)
+        db.add_view(film["id"])
+        return _json({"ok": True})
+
     async def history(request: web.Request) -> web.Response:
         user = api.user_of(request)
         if not user:
@@ -1934,6 +1980,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("GET", "/api/media/{film_id}/{token}/{path:.+}", media),
         ("POST", "/api/films/{film_id}/reviews", add_review),
         ("POST", "/api/films/{film_id}/progress", progress),
+        ("POST", "/api/films/{film_id}/complete", complete_view),
         ("GET", "/api/me/history", history),
         ("GET", "/api/avatar/{uid}", avatar),
         ("GET", "/api/ad/{id}/video", ad_video),
@@ -1998,7 +2045,7 @@ async def main() -> None:
         if film["status"] != "ready" or not (folder / "master.m3u8").exists():
             if film["status"] != "failed" or film["video_file_id"]:
                 transcoder.enqueue(film["id"])
-        elif not hls_ready(folder) and (folder / "source.mp4").exists():
+        elif not hls_ready(folder, film["height"]) and (folder / "source.mp4").exists():
             # старый набор качеств: пересобираем из исходника, старое видео играет до замены
             transcoder.queue.put_nowait(film["id"])
     transcoder.start()
