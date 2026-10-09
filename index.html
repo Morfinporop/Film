@@ -138,7 +138,7 @@
     touch-action: manipulation;
   }
   .vp.vertical { aspect-ratio: 9 / 16; max-height: 72vh; width: auto; max-width: 100%; margin: 0 auto; }
-  .vp.fs { border-radius: 0; width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; margin: 0; }
+  .vp.fs { position: fixed; inset: 0; z-index: 999; background: #000; border-radius: 0; width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; margin: 0; }
   .vp video { width: 100%; height: 100%; display: block; object-fit: contain; background: transparent; }
   .vp.fs video { object-fit: contain; }
   .vp:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
@@ -155,7 +155,7 @@
     display: grid; place-items: center; pointer-events: none; opacity: 0; transform: scale(.7);
     transition: opacity .25s, transform .25s;
   }
-  .vp-flash svg { width: 30px; height: 30px; }
+  .vp-flash svg { width: 30px; height: 30px; fill: #fff; }
   .vp-flash.show { opacity: 1; transform: scale(1); }
   .vp-skip {
     position: absolute; top: 50%; width: 110px; margin-top: -30px; text-align: center; pointer-events: none;
@@ -282,6 +282,7 @@
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: none;
   }
   .vp-vol:hover .vp-vslider { display: block; }
+  .vp-vol.open .vp-vslider { display: block; }
   .vp.fs .vp-vslider { display: none !important; }
   .vp-vslider input[type=range] {
     position: absolute; left: 50%; top: 50%; width: 104px; height: 20px; margin: 0;
@@ -698,7 +699,7 @@
       ${episodeNav}
 
       <section class="section">
-        <h2>Описание</h2>
+        <div class="sec-head"><h2>Описание</h2><span class="pill">Просмотров: ${f.views}</span></div>
         <p class="desc${longDesc ? " clamp" : ""}" id="desc">${esc(desc || "Описание пока не добавлено.")}</p>
         ${longDesc ? '<button class="linkbtn" id="descMore">Читать дальше</button>' : ""}
       </section>
@@ -818,7 +819,7 @@
           </div>
           <div class="vp-row">
             <button class="vp-btn" id="vpPlay" aria-label="Воспроизвести">${ICON.play}</button>
-            <div class="vp-vol">
+            <div class="vp-vol" id="vpVolBox">
               <button class="vp-btn" id="vpMute" aria-label="Звук">${ICON.vol}</button>
               <div class="vp-vslider"><input type="range" id="vpVol" min="0" max="1" step="0.02" aria-label="Громкость"></div>
             </div>
@@ -949,11 +950,25 @@
       prefs.volume = v > 0 ? v : prefs.volume; prefs.muted = video.muted; savePrefs();
     }
     function toggleMute() { video.muted = !video.muted; prefs.muted = video.muted; savePrefs(); }
-    function toggleFs() {
-      if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
-      if (vp.requestFullscreen) vp.requestFullscreen().catch(() => {});
-      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+    // полноэкранный режим реализован через CSS-класс .fs (fixed на весь экран), а не
+    // только через Fullscreen API: внутри Telegram WebView на телефоне этот API часто
+    // недоступен (document.fullscreenEnabled === false), из-за чего кнопка раньше пропадала
+    function enterFs() {
+      vp.classList.add("fs");
+      nav.classList.add("hidden");
+      document.body.style.overflow = "hidden";
+      $("#vpFs").innerHTML = ICON.fsx;
+      const req = vp.requestFullscreen || vp.webkitRequestFullscreen;
+      if (req) { const p = req.call(vp); if (p && p.catch) p.catch(() => {}); }
     }
+    function exitFs() {
+      vp.classList.remove("fs");
+      nav.classList.remove("hidden");
+      document.body.style.overflow = "";
+      $("#vpFs").innerHTML = ICON.fs;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+    function toggleFs() { vp.classList.contains("fs") ? exitFs() : enterFs(); }
     function togglePip() {
       if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
       else video.requestPictureInPicture().catch(() => {});
@@ -1025,12 +1040,22 @@
       setSpeed(SPEEDS[(i + 1) % SPEEDS.length]);
     };
     $("#vpPlay").onclick = (e) => { e.stopPropagation(); togglePlay(); };
-    $("#vpMute").onclick = (e) => { e.stopPropagation(); toggleMute(); };
+    // громкость: на устройствах без hover (телефоны) клик по кнопке открывает и закрывает
+    // ползунок, на мыши — обычный тап переключает mute (ползунок открывается наведением)
+    const volBox = $("#vpVolBox");
+    const isTouch = "ontouchstart" in window || (window.matchMedia && matchMedia("(hover: none)").matches);
+    $("#vpMute").onclick = (e) => {
+      e.stopPropagation();
+      if (isTouch) { volBox.classList.toggle("open"); wake(); }
+      else toggleMute();
+    };
+    document.addEventListener("click", (e) => {
+      if (isTouch && volBox.classList.contains("open") && !e.target.closest("#vpVolBox")) volBox.classList.remove("open");
+    });
     $("#vpVol").addEventListener("input", (e) => setVolume(Number(e.target.value)));
     $("#vpFs").onclick = (e) => { e.stopPropagation(); toggleFs(); };
     if (document.pictureInPictureEnabled && video.requestPictureInPicture) $("#vpPip").classList.remove("hidden");
     $("#vpPip").onclick = (e) => { e.stopPropagation(); togglePip(); };
-    if (!(document.fullscreenEnabled || video.webkitEnterFullscreen)) $("#vpFs").classList.add("hidden");
 
     // ---- прогресс: перемотка мышью, пальцем и с тултипом ----
     const ratioAt = (clientX) => {
@@ -1100,6 +1125,8 @@
     video.addEventListener("ended", () => {
       $("#vpPlay").innerHTML = ICON.replay; vp.classList.remove("idle");
       try { localStorage.removeItem("pos:" + f.id); } catch (_) {}
+      // просмотр засчитывается только при полном досмотре до конца
+      fetch(`/api/films/${f.id}/complete`, { method: "POST", headers: { "X-Init-Data": initData() } }).catch(() => {});
     });
     video.addEventListener("waiting", () => vp.classList.add("loading"));
     video.addEventListener("playing", () => vp.classList.remove("loading"));
@@ -1205,9 +1232,8 @@
       });
     }
     const onFs = () => {
-      const on = document.fullscreenElement === vp;
-      vp.classList.toggle("fs", on);
-      $("#vpFs").innerHTML = on ? ICON.fsx : ICON.fs;
+      // если Fullscreen API сам вышел (например, системной кнопкой), синхронизируем наш CSS-режим
+      if (!document.fullscreenElement && vp.classList.contains("fs")) exitFs();
     };
     document.addEventListener("fullscreenchange", onFs);
 
@@ -1252,7 +1278,7 @@
       else if (k === ">" || k === ".") setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(video.playbackRate) + 1)] || 2);
       else if (k === "<" || k === ",") setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] || 0.25);
       else if (/^[0-9]$/.test(k)) { if (dur()) seekTo((Number(k) / 10) * dur()); }
-      else if (k === "Escape") { if (state.menuPage) closeMenu(); else if (document.fullscreenElement) toggleFs(); }
+      else if (k === "Escape") { if (state.menuPage) closeMenu(); else if (vp.classList.contains("fs")) exitFs(); }
       else handled = false;
       if (handled) { e.preventDefault(); wake(); }
     });
@@ -1267,7 +1293,7 @@
         document.removeEventListener("fullscreenchange", onFs);
         if (state.hls) { try { state.hls.destroy(); } catch (_) {} }
         video.pause(); video.removeAttribute("src"); video.load();
-        if (document.fullscreenElement === vp) document.exitFullscreen().catch(() => {});
+        exitFs();
       },
     };
   }
@@ -1603,7 +1629,7 @@
         <select id="u-kind"><option value="video">Загрузить видео</option><option value="series">Сериал (карточка, серии добавляются потом)</option></select></label>
       <div id="u-video">
         <label class="field"><span>Видеофайл</span><input type="file" id="u-file" accept="video/*"></label>
-        <p class="hint">Максимум 2 ГБ. Видео переводится в 144p, 480p и 720p. Субтитры добавляются после загрузки.</p>
+        <p class="hint">Максимум 2 ГБ. Видео сразу открывается для просмотра, как только готово первое качество (144p), остальные качества докачиваются в фоне.</p>
       </div>
       <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
       <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
@@ -1684,7 +1710,7 @@
       </div>`).join("");
     box.innerHTML = `<div class="glass">
       <h2>Реклама</h2>
-      <p class="sub">Ролик загружается без обработки. Показывается пользователям без VIP, когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</p>
+      <p class="sub">Ролик загружается без обработки. Показывается пользователям без настоящей оплаченной VIP-подписки (включая персонал — чтобы можно было проверить работу рекламы), когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</p>
       <div id="ad-list">${rows || '<div class="sub" style="margin:0">Роликов пока нет</div>'}</div>
       <h2 style="margin-top:24px">Добавить ролик</h2>
       <label class="field"><span>Ролик (видео)</span><input type="file" id="adFile" accept="video/*"></label>
