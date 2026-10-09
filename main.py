@@ -759,12 +759,17 @@ class Transcoder:
 
         ladder = list(LADDER)  # всегда весь набор 144p-1080p; для низкого исходника качество увеличивается
         await extract_subtitles(src, folder / "subs")
+        # новые качества собираются в отдельной папке и заменяют старые только после успеха,
+        # поэтому при переобработке (например, после обновления бота) не остаётся мусора
+        build = folder / ".build"
+        shutil.rmtree(build, ignore_errors=True)
+        build.mkdir()
         variants: list[tuple[int, int, int]] = []
         for h in ladder:
             if self.db.get_film(film_id) is None:  # фильм удалили во время обработки
                 return
             w = max(2, round(width * h / height / 2) * 2)
-            out = folder / f"{h}p"
+            out = build / f"{h}p"
             out.mkdir(exist_ok=True)
             kbps = BITRATE_KBPS[h]
             akbps = AUDIO_KBPS.get(h, 128)
@@ -790,7 +795,14 @@ class Transcoder:
         for h, w, kbps in variants:
             master.append(f'#EXT-X-STREAM-INF:BANDWIDTH={(kbps + 128) * 1000},RESOLUTION={w}x{h},NAME="{h}p"')
             master.append(f"{h}p/index.m3u8")
-        (folder / "master.m3u8").write_text("\n".join(master) + "\n", encoding="utf-8")
+        (build / "master.m3u8").write_text("\n".join(master) + "\n", encoding="utf-8")
+        for old in folder.iterdir():  # старые качества и плейлист удаляем, исходник и субтитры остаются
+            if old.is_dir() and re.fullmatch(r"\d+p", old.name):
+                shutil.rmtree(old, ignore_errors=True)
+        (folder / "master.m3u8").unlink(missing_ok=True)
+        for new in build.iterdir():
+            os.replace(new, folder / new.name)
+        shutil.rmtree(build, ignore_errors=True)
 
         self.db.update_film(film_id, status="ready", error=None, duration=duration, width=width, height=height)
         log.info("фильм %s готов: %s", film_id, [v[0] for v in variants])
