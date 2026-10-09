@@ -274,6 +274,19 @@ CREATE TABLE IF NOT EXISTS sales (
     refunded   INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS watch (
+    user_id    INTEGER NOT NULL,
+    film_id    INTEGER NOT NULL,
+    position   REAL    NOT NULL DEFAULT 0,
+    duration   REAL    NOT NULL DEFAULT 0,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, film_id)
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 INDEXES = """
@@ -290,6 +303,7 @@ FILM_COLUMNS = {
     "description": "TEXT NOT NULL DEFAULT ''",
     "release_date": "TEXT NOT NULL DEFAULT ''",
     "creator": "TEXT NOT NULL DEFAULT ''",
+    "country": "TEXT NOT NULL DEFAULT ''",
     "poster": "TEXT",
     "status": "TEXT NOT NULL DEFAULT 'ready'",
     "error": "TEXT",
@@ -424,7 +438,7 @@ class Database:
 
     def update_film(self, film_id: int, **fields: Any) -> None:
         allowed = {"title", "description", "release_date", "creator", "is_vip", "is_active",
-                   "url", "status", "error", "duration", "width", "height", "poster"}
+                   "url", "status", "error", "duration", "width", "height", "poster", "country"}
         items = [(k, v) for k, v in fields.items() if k in allowed]
         if not items:
             return
@@ -493,6 +507,47 @@ class Database:
 
     def delete_comment(self, comment_id: int) -> None:
         self.conn.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+
+    # ---- просмотры, прогресс, настройки ----
+    def touch_watch(self, user_id: int, film_id: int) -> None:
+        self.conn.execute(
+            """INSERT INTO watch (user_id, film_id) VALUES (?, ?)
+               ON CONFLICT(user_id, film_id) DO UPDATE SET updated_at = datetime('now')""",
+            (user_id, film_id),
+        )
+
+    def save_progress(self, user_id: int, film_id: int, position: float, duration: float) -> None:
+        """Досмотренный до конца фильм не запоминает позицию, чтобы не предлагать продолжить."""
+        done = duration > 0 and position >= duration - 5
+        pos = 0.0 if done else max(0.0, position)
+        self.conn.execute(
+            """INSERT INTO watch (user_id, film_id, position, duration) VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, film_id) DO UPDATE SET position = excluded.position,
+                 duration = excluded.duration, updated_at = datetime('now')""",
+            (user_id, film_id, pos, max(0.0, duration)),
+        )
+
+    def get_watch(self, user_id: int, film_id: int) -> dict | None:
+        return self._one("SELECT * FROM watch WHERE user_id = ? AND film_id = ?", (user_id, film_id))
+
+    def history(self, user_id: int, limit: int = 60) -> list[dict]:
+        return self._all(
+            """SELECT f.*, w.position AS w_position, w.duration AS w_duration, w.updated_at AS w_updated
+               FROM watch w JOIN films f ON f.id = w.film_id
+               WHERE w.user_id = ? AND f.is_active = 1
+               ORDER BY w.updated_at DESC LIMIT ?""",
+            (user_id, limit),
+        )
+
+    def get_setting(self, key: str) -> str | None:
+        row = self._one("SELECT value FROM settings WHERE key = ?", (key,))
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
     # ---- продажи ----
     def record_sale(self, user_id: int, kind: str, amount: int, charge_id: str) -> bool:
@@ -687,7 +742,7 @@ class Transcoder:
         if not height:
             raise RuntimeError("Файл не распознан как видео")
 
-        ladder = [h for h in LADDER if h <= height] or [LADDER[0]]
+        ladder = list(LADDER)  # всегда весь набор 144p-1080p; для низкого исходника качество увеличивается
         await extract_subtitles(src, folder / "subs")
         variants: list[tuple[int, int, int]] = []
         for h in ladder:
@@ -1015,23 +1070,17 @@ class Api:
             "hasPoster": bool(film["poster"] or film["photo_file_id"]),
             "rating": rating,
             "reviewCount": reviews_n,
-            "commentCount": self.db.comment_count(film["id"]),
+            "country": film["country"],
             "isMine": bool(user and film.get("owner_id") == user["id"]),
         }
         if film["kind"] == "link" and not locked:
             data["url"] = film["url"]
         if detail:
             data["reviews"] = [
-                {"id": r["id"], "name": self.db.display_name(r["user_id"]), "rating": r["rating"],
+                {"id": r["id"], "userId": r["user_id"], "name": self.db.display_name(r["user_id"]), "rating": r["rating"],
                  "text": r["text"], "date": r["created_at"],
                  "canDelete": bool(user and (r["user_id"] == user["id"] or at_least(user["role"], ADMIN)))}
                 for r in self.db.reviews(film["id"])
-            ]
-            data["comments"] = [
-                {"id": c["id"], "name": self.db.display_name(c["user_id"]), "text": c["text"],
-                 "date": c["created_at"],
-                 "canDelete": bool(user and (c["user_id"] == user["id"] or at_least(user["role"], ADMIN)))}
-                for c in self.db.comments(film["id"])
             ]
         return data
 
@@ -1209,14 +1258,22 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         if api.locked(user, film):
             return _json({"error": "vip_required"}, 403)
         db.add_view(film["id"])
+        db.touch_watch(user["id"], film["id"])
         if film["kind"] == "link":
             return _json({"kind": "link", "src": embed_url(film["url"]), "url": film["url"]})
+        watch = db.get_watch(user["id"], film["id"]) or {}
+        pos = float(watch.get("position") or 0)
+        dur = float(watch.get("duration") or film["duration"] or 0)
+        resume_at = pos if 5 < pos < dur - 15 else 0
+        ad = None
+        if not api.vip_active(user) and dur >= 30 and (media_root / "ad" / "ad.mp4").exists():
+            ad = {"src": "/api/ad/video", "link": db.get_setting("ad_link") or ""}
         token = make_media_token(api.secret, film["id"])
         subs = [{"lang": n, "label": SUB_LABELS.get(n.rstrip("0123456789"), n.upper()),
                  "src": f"/api/media/{film['id']}/{token}/subs/{n}.vtt"}
                 for n in list_subtitles(media_root / str(film["id"]))]
         return _json({"kind": "hls", "src": f"/api/media/{film['id']}/{token}/master.m3u8", "subtitles": subs,
-                      "width": film["width"], "height": film["height"]})
+                      "width": film["width"], "height": film["height"], "resumeAt": resume_at, "ad": ad})
 
     async def media(request: web.Request) -> web.StreamResponse:
         try:
@@ -1251,36 +1308,6 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         if not 1 <= rating <= 5:
             return _err("bad_rating", 400)
         db.upsert_review(film["id"], user["id"], rating, text)
-        return _json({"ok": True})
-
-    async def add_comment(request: web.Request) -> web.Response:
-        user = api.user_of(request)
-        if not user:
-            return _err("auth", 401)
-        film = _film_or_none(request)
-        if not film:
-            return _err("not_found", 404)
-        if api.locked(user, film):
-            return _err("vip_required", 403)
-        try:
-            text = str((await request.json()).get("text", "")).strip()[:1000]
-        except (ValueError, json.JSONDecodeError):
-            return _err("bad_request", 400)
-        if not text:
-            return _err("empty", 400)
-        db.add_comment(film["id"], user["id"], text)
-        return _json({"ok": True})
-
-    async def delete_comment(request: web.Request) -> web.Response:
-        user = api.user_of(request)
-        if not user:
-            return _err("auth", 401)
-        comment = db.get_comment(int(request.match_info["id"]))
-        if not comment:
-            return _err("not_found", 404)
-        if comment["user_id"] != user["id"] and not at_least(user["role"], ADMIN):
-            return _err("forbidden", 403)
-        db.delete_comment(comment["id"])
         return _json({"ok": True})
 
     async def delete_review(request: web.Request) -> web.Response:
@@ -1414,6 +1441,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                 description=fields.get("description", "")[:4000],
                 release_date=fields.get("releaseDate", "")[:10],
                 creator=fields.get("creator", "")[:120],
+                country=fields.get("country", "")[:80],
                 is_vip=1 if fields.get("isVip") in ("1", "true", "on") else 0,
                 status="ready" if kind == "link" else "processing",
             )
@@ -1457,6 +1485,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             fields["release_date"] = str(body["releaseDate"])[:10]
         if "creator" in body:
             fields["creator"] = str(body["creator"])[:120]
+        if "country" in body:
+            fields["country"] = str(body["country"])[:80]
         if "url" in body and film["kind"] == "link":
             if not URL_RE.match(str(body["url"])):
                 return _err("bad_url", 400)
@@ -1633,6 +1663,119 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             balance = None
         return _json({**db.counts(), "revenue": db.revenue(), "botBalance": balance})
 
+    async def progress(request: web.Request) -> web.Response:
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        film = _film_or_none(request)
+        if not film:
+            return _err("not_found", 404)
+        try:
+            body = await request.json()
+            pos = float(body.get("position", 0))
+            dur = float(body.get("duration", 0))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if not (0 <= pos < 1e7 and 0 <= dur < 1e7):
+            return _err("bad_request", 400)
+        db.save_progress(user["id"], film["id"], pos, dur)
+        return _json({"ok": True})
+
+    async def history(request: web.Request) -> web.Response:
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        out = []
+        for row in db.history(user["id"]):
+            item = api.film_json(user, row)
+            item["position"] = row["w_position"]
+            item["watchDuration"] = row["w_duration"]
+            item["progress"] = round(min(1.0, row["w_position"] / row["w_duration"]), 3) if row["w_duration"] else 0
+            out.append(item)
+        return _json(out)
+
+    avatars_dir = cfg.media_dir.parent / "avatars"
+
+    async def avatar(request: web.Request) -> web.Response:
+        try:
+            uid = int(request.match_info["uid"])
+        except ValueError:
+            return web.Response(status=404)
+        path = avatars_dir / f"{uid}.jpg"
+        missing = avatars_dir / f"{uid}.none"
+        day = 86400
+        if path.exists() and time.time() - path.stat().st_mtime < day:
+            return web.FileResponse(path, headers={"Cache-Control": "private, max-age=3600"})
+        if missing.exists() and time.time() - missing.stat().st_mtime < day / 4:
+            return web.Response(status=404)
+        try:
+            photos = await bot.get_user_profile_photos(uid, limit=1)
+            if getattr(photos, "total_count", 0) and photos.photos:
+                tg_file = await bot.get_file(photos.photos[0][-1].file_id)
+                avatars_dir.mkdir(parents=True, exist_ok=True)
+                await bot.download_file(tg_file.file_path, destination=path)
+                return web.FileResponse(path, headers={"Cache-Control": "private, max-age=3600"})
+        except Exception:  # нет доступа к фото, сеть, приватность — показываем заглушку
+            pass
+        avatars_dir.mkdir(parents=True, exist_ok=True)
+        missing.touch()
+        return web.Response(status=404)
+
+    ad_path = media_root / "ad" / "ad.mp4"
+
+    async def ad_video(_: web.Request) -> web.Response:
+        if not ad_path.exists():
+            return web.Response(status=404)
+        return web.FileResponse(ad_path, headers={"Cache-Control": "no-cache", "Content-Type": "video/mp4"})
+
+    async def admin_ad_get(request: web.Request) -> web.Response:
+        _, bad = staff_user(request, ADMIN)
+        if bad:
+            return bad
+        return _json({"hasVideo": ad_path.exists(), "link": db.get_setting("ad_link") or ""})
+
+    async def admin_ad_save(request: web.Request) -> web.Response:
+        user, bad = staff_user(request, ADMIN)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            return _err("bad_request", 400)
+        link = str(body.get("link", "")).strip()
+        if link and not URL_RE.match(link):
+            return _err("bad_url", 400)
+        db.set_setting("ad_link", link)
+        uid = str(body.get("uploadId", "") or "")
+        if uid:
+            item = uploads.get(uid, user["id"])
+            if not item:
+                return _err("video_required", 400)
+            if len(item["received"]) != item["total"]:
+                return _err("upload_incomplete", 400)
+            ad_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_out = ad_path.parent / "ad.tmp.mp4"
+            await _run([
+                "-hide_banner", "-loglevel", "error", "-y", "-i", str(item["path"]),
+                "-map", "0:v:0", "-map", "0:a:0?", "-vf", "scale=-2:'min(720,ih)'",
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp_out),
+            ])
+            uploads.discard(uid)
+            if not tmp_out.exists() or tmp_out.stat().st_size == 0:
+                tmp_out.unlink(missing_ok=True)
+                return _err("bad_video", 400)
+            os.replace(tmp_out, ad_path)
+        return _json({"ok": True, "hasVideo": ad_path.exists(), "link": link})
+
+    async def admin_ad_delete(request: web.Request) -> web.Response:
+        _, bad = staff_user(request, ADMIN)
+        if bad:
+            return bad
+        ad_path.unlink(missing_ok=True)
+        db.set_setting("ad_link", "")
+        return _json({"ok": True})
+
     routes = [
         ("GET", "/health", health),
         ("GET", "/", page),
@@ -1646,8 +1789,13 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("POST", "/api/films/{film_id}/play", play),
         ("GET", "/api/media/{film_id}/{token}/{path:.+}", media),
         ("POST", "/api/films/{film_id}/reviews", add_review),
-        ("POST", "/api/films/{film_id}/comments", add_comment),
-        ("POST", "/api/comments/{id}/delete", delete_comment),
+        ("POST", "/api/films/{film_id}/progress", progress),
+        ("GET", "/api/me/history", history),
+        ("GET", "/api/avatar/{uid}", avatar),
+        ("GET", "/api/ad/video", ad_video),
+        ("GET", "/api/admin/ad", admin_ad_get),
+        ("POST", "/api/admin/ad", admin_ad_save),
+        ("POST", "/api/admin/ad/delete", admin_ad_delete),
         ("POST", "/api/reviews/{id}/delete", delete_review),
         ("POST", "/api/pay/invoice", invoice),
         ("GET", "/api/admin/films", admin_films),

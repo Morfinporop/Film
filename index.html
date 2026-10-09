@@ -203,19 +203,69 @@
     display: grid; place-items: center; flex: none; padding: 0;
   }
   .vp-btn:hover { background: var(--field); }
+  .vp-btn svg { transition: none; }
+  .vp-btn:hover svg { transform: none; }
+  .vp-resume {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3;
+    background: none; border: 0; color: #fff; font-size: 20px; font-weight: 600; white-space: nowrap;
+    text-shadow: 0 2px 10px #000; cursor: pointer; padding: 10px 16px;
+  }
+  .vp-resume.hidden { display: none; }
+  .vp-ad { position: absolute; inset: 0; z-index: 4; background: #000; border-radius: inherit; overflow: hidden; }
+  .vp-ad.hidden { display: none; }
+  .vp-ad video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .vp-ad-link { position: absolute; inset: 0; background: transparent; border: 0; cursor: pointer; }
+  .vp-ad-link:disabled { cursor: default; }
+  .vp-ad-tag { position: absolute; left: 14px; top: 12px; color: #fff; font-size: 13px; text-shadow: 0 1px 4px #000; pointer-events: none; }
+  .vp-ad-skip {
+    position: absolute; right: 16px; top: 50%; transform: translateY(-50%); z-index: 2;
+    padding: 10px 16px; border: 0; border-radius: 12px; background: rgba(0,0,0,.55); color: #fff;
+    font-size: 14px; font-weight: 600; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .vp-ad-skip.hidden { display: none; }
+  .vp-ad-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(0,0,0,.6); pointer-events: none; }
+  .vp-ad-bar i { display: block; height: 100%; width: 0; background: #facc15; }
+  .vp.ad-on .vp-bar, .vp.ad-on .vp-subs { display: none; }
+  .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .sec-head h2 { margin: 0; }
+  .gold { color: var(--gold); letter-spacing: 2px; }
+  .ava { position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: none;
+    background: var(--field); border: 1px solid var(--line); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--text); }
+  .ava img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .linkbtn { background: none; border: 0; color: var(--text); text-decoration: underline; padding: 10px 0 0; font-size: 14px; cursor: pointer; }
+  .modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 20px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .modal { width: min(560px, 100%); max-height: 80vh; display: flex; flex-direction: column; overflow: hidden;
+    background: rgba(0,0,0,.82); border: 1px solid var(--line); border-radius: 24px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .modal-head b { font-size: 17px; font-weight: 600; }
+  .modal-body { padding: 6px 20px 20px; overflow-y: auto; }
+  .hist-row { cursor: pointer; }
+  .hist-row .more { color: var(--text); text-decoration: underline; }
+  .hist-row .info div { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .hist-row .info p { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
   .vp-btn:focus-visible { outline: 2px solid rgba(255,255,255,.5); outline-offset: -2px; }
   .vp-btn svg { width: 22px; height: 22px; fill: currentColor; }
   .vp-btn.stroke svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .vp-btn.textual { width: auto; border-radius: 10px; padding: 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
   .vp-btn.textual.on { background: #fff; color: #000; }
-  .vp-vol { display: flex; align-items: center; }
-  .vp-vol input[type=range] {
-    width: 0; opacity: 0; transition: width .2s, opacity .2s, margin .2s; margin-left: 0;
-    -webkit-appearance: none; appearance: none; height: 4px; background: var(--field); border: 1px solid var(--line); border-radius: 4px; outline: none;
+  .vp-vol { position: relative; display: flex; align-items: center; }
+  .vp-vslider {
+    position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 4px;
+    width: 40px; height: 128px; border-radius: 14px; background: rgba(0,0,0,.6); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: none;
   }
-  .vp-vol:hover input[type=range], .vp-vol:focus-within input[type=range] { width: 84px; opacity: 1; margin-left: 4px; }
-  .vp-vol input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
-  .vp-vol input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; }
+  .vp-vol:hover .vp-vslider, .vp-vol:focus-within .vp-vslider { display: block; }
+  .vp.fs .vp-vslider { display: none !important; }
+  .vp-vslider input[type=range] {
+    position: absolute; left: 50%; top: 50%; width: 104px; height: 20px; margin: 0;
+    transform: translate(-50%, -50%) rotate(-90deg); background: transparent; -webkit-appearance: none; appearance: none;
+  }
+  .vp-vslider input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: rgba(0,0,0,.6); }
+  .vp-vslider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: #fff; }
+  .vp-vslider input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(0,0,0,.6); }
+  .vp-vslider input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; }
   .vp-time { color: #fff; font-size: 13px; font-variant-numeric: tabular-nums; margin-left: 8px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
   .vp-grow { flex: 1; }
   .vp-menu {
@@ -285,7 +335,6 @@
     .plans { grid-template-columns: 1fr; }
     .hero-inner { grid-template-columns: 116px 1fr; gap: 14px; }
     .hero h1 { font-size: 20px; }
-    .vp-vol input[type=range] { display: none; }
     .vp-time { font-size: 12px; }
     .vp-btn { width: 36px; height: 36px; }
   }
@@ -401,7 +450,7 @@
     if (parts[0] === "admin") {
       if (parts[1] === "upload") return { name: "admin", tab: "upload" };
       if (parts[1] === "film" && parts[2]) return { name: "admin", tab: "films", edit: parts[2] };
-      if (parts[1] === "users" || parts[1] === "sales") return { name: "admin", tab: parts[1] };
+      if (parts[1] === "users" || parts[1] === "sales" || parts[1] === "ads") return { name: "admin", tab: parts[1] };
       return { name: "admin", tab: "films" };
     }
     if (["search", "vip", "profile"].includes(parts[0])) return { name: parts[0] };
@@ -491,25 +540,58 @@
   }
 
   // ---- фильм ----
+  const avatarHtml = (uid, name) => `<span class="ava"><b>${esc(String(name || "?").trim().charAt(0).toUpperCase())}</b><img src="/api/avatar/${esc(uid)}" alt="" onerror="this.remove()"></span>`;
+  const starRow = (n) => `<span class="gold">${"★".repeat(n)}</span>`;
+  const reviewItem = (r) => `<div class="item">
+      <div class="head">${avatarHtml(r.userId, r.name)}<b>${esc(r.name)}</b>${starRow(r.rating)}<span>${esc(fmtDate(r.date))}</span>
+      ${r.canDelete ? `<span class="spacer"></span><button class="btn ghost small" data-del-review="${r.id}">Удалить</button>` : ""}</div>
+      ${r.text ? `<p>${esc(r.text)}</p>` : ""}</div>`;
+
+  function openModal(title, bodyHtml) {
+    closeModal();
+    const bg = document.createElement("div");
+    bg.className = "modal-bg";
+    bg.id = "modalBg";
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><b>${esc(title)}</b><button class="btn ghost small" data-close aria-label="Закрыть">Закрыть</button></div>
+      <div class="modal-body">${bodyHtml}</div></div>`;
+    bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) closeModal(); });
+    document.body.appendChild(bg);
+    return bg.querySelector(".modal-body");
+  }
+  function closeModal() { const m = document.getElementById("modalBg"); if (m) m.remove(); }
+
+  function openReviewForm(f) {
+    const body = openModal("Оставить отзыв", `
+      <div class="stars" id="starPick">${[1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}">★</button>`).join("")}</div>
+      <label class="field" style="margin:14px 0"><textarea id="reviewText" maxlength="1000" placeholder="Ваш отзыв"></textarea></label>
+      <button class="btn" id="sendReview">Отправить</button>`);
+    let stars = 0;
+    body.querySelector("#starPick").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-star]");
+      if (!b) return;
+      stars = Number(b.dataset.star);
+      body.querySelectorAll("#starPick button").forEach((x) => x.classList.toggle("on", Number(x.dataset.star) <= stars));
+    });
+    body.querySelector("#sendReview").onclick = async () => {
+      if (!stars) { toast("Выберите оценку"); return; }
+      await call(`/api/films/${f.id}/reviews`, { body: { rating: stars, text: body.querySelector("#reviewText").value } }).catch(() => null);
+      closeModal();
+      toast("Отзыв сохранён");
+      viewFilm(f.id);
+    };
+  }
+
   async function viewFilm(id) {
+    stopPlayer();
     const f = await call(`/api/films/${id}`).catch(() => null);
     S.filmId = id;
     if (!f) { app.innerHTML = '<div class="empty">Фильм не найден</div>'; return; }
     const poster = f.hasPoster ? `/api/films/${f.id}/poster` : "";
-    const reviewsHtml = f.reviews.length
-      ? f.reviews.map((r) => `<div class="item">
-          <div class="head"><b>${esc(r.name)}</b><span>${"★".repeat(r.rating)}</span><span>${esc(fmtDate(r.date))}</span>
-          ${r.canDelete ? `<span class="spacer"></span><button class="btn ghost small" data-del-review="${r.id}">Удалить</button>` : ""}</div>
-          ${r.text ? `<p>${esc(r.text)}</p>` : ""}</div>`).join("")
-      : '<div class="sub" style="margin:0">Отзывов пока нет</div>';
-    const commentsHtml = f.comments.length
-      ? f.comments.map((c) => `<div class="item">
-          <div class="head"><b>${esc(c.name)}</b><span>${esc(fmtDate(c.date))}</span>
-          ${c.canDelete ? `<span class="spacer"></span><button class="btn ghost small" data-del-comment="${c.id}">Удалить</button>` : ""}</div>
-          <p>${esc(c.text)}</p></div>`).join("")
-      : '<div class="sub" style="margin:0">Комментариев пока нет</div>';
+    const preview = f.reviews.slice(0, 3).map(reviewItem).join("");
     const canWrite = !S.me.guest && !f.locked;
-    const starsHtml = [1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}">★</button>`).join("");
+    const desc = f.description || "";
+    const longDesc = desc.length > 220;
 
     app.innerHTML = `
       <section class="hero" style="--poster: url('${poster}')">
@@ -523,6 +605,7 @@
             <div class="facts">
               <div>Дата выхода: <b>${esc(fmtRelease(f.releaseDate))}</b></div>
               <div>Автор: <b>${esc(f.creator || "не указан")}</b></div>
+              <div>Страна: <b>${esc(f.country || "не указана")}</b></div>
               <div>Оценка: <b>${f.reviewCount ? f.rating.toFixed(1) + " (" + f.reviewCount + ")" : "нет"}</b></div>
               ${f.duration ? `<div>Длительность: <b>${fmtClock(f.duration)}</b></div>` : ""}
             </div>
@@ -534,27 +617,19 @@
 
       <section class="section">
         <h2>Описание</h2>
-        <p class="desc">${esc(f.description || "Описание пока не добавлено.")}</p>
+        <p class="desc${longDesc ? " clamp" : ""}" id="desc">${esc(desc || "Описание пока не добавлено.")}</p>
+        ${longDesc ? '<button class="linkbtn" id="descMore">Читать дальше</button>' : ""}
       </section>
 
       <section class="section">
-        <h2>Отзывы</h2>
-        ${canWrite ? `<div class="glass" style="margin-bottom:14px">
-          <div class="stars" id="starPick">${starsHtml}</div>
-          <label class="field" style="margin:14px 0 14px"><textarea id="reviewText" maxlength="1000" placeholder="Ваш отзыв"></textarea></label>
-          <button class="btn" id="sendReview">Оставить отзыв</button>
-        </div>` : ""}
-        <div class="glass">${reviewsHtml}</div>
-      </section>
-
-      <section class="section">
-        <h2>Комментарии</h2>
-        ${canWrite ? `<div class="row" style="margin-bottom:14px">
-          <input type="text" id="commentText" maxlength="1000" placeholder="Написать комментарий" style="flex:1">
-          <button class="btn round" id="sendComment" aria-label="Отправить">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l16-8-6 16-2-7z" stroke-linejoin="round"/></svg>
-          </button></div>` : ""}
-        <div class="glass">${commentsHtml}</div>
+        <div class="sec-head">
+          <h2>Отзывы</h2>
+          <div class="row">
+            <button class="btn ghost small" id="allReviews">Все отзывы</button>
+            ${canWrite ? '<button class="btn small" id="leaveReview">Оставить отзыв</button>' : ""}
+          </div>
+        </div>
+        <div class="glass">${preview || '<div class="sub" style="margin:0">Отзывов пока нет</div>'}</div>
       </section>`;
 
     await mountFilmPlayer(f);
@@ -562,38 +637,25 @@
   }
 
   function bindFilm(f) {
-    let stars = 0;
-    const pick = $("#starPick");
-    if (pick) {
-      pick.addEventListener("click", (e) => {
-        const b = e.target.closest("button[data-star]");
-        if (!b) return;
-        stars = Number(b.dataset.star);
-        pick.querySelectorAll("button").forEach((x) => x.classList.toggle("on", Number(x.dataset.star) <= stars));
-      });
-      $("#sendReview").onclick = async () => {
-        if (!stars) { toast("Выберите оценку"); return; }
-        await call(`/api/films/${f.id}/reviews`, { body: { rating: stars, text: $("#reviewText").value } }).catch(() => null);
-        toast("Отзыв сохранён"); viewFilm(f.id);
-      };
-    }
-    const sendC = $("#sendComment");
-    if (sendC) sendC.onclick = async () => {
-      const text = $("#commentText").value.trim();
-      if (!text) return;
-      await call(`/api/films/${f.id}/comments`, { body: { text } }).catch(() => null);
-      viewFilm(f.id);
+    const more = $("#descMore");
+    if (more) more.onclick = () => { $("#desc").classList.remove("clamp"); more.remove(); };
+    $("#allReviews").onclick = () => {
+      const all = f.reviews.length
+        ? f.reviews.map(reviewItem).join("")
+        : '<div class="sub" style="margin:0">Отзывов пока нет</div>';
+      openModal(`Отзывы · ${f.reviews.length}`, all);
     };
+    const lr = $("#leaveReview");
+    if (lr) lr.onclick = () => openReviewForm(f);
   }
 
-  // делегированное удаление отзывов и комментариев (один обработчик на весь документ)
-  app.addEventListener("click", async (e) => {
+  // удаление отзывов (один обработчик на документ, модалки тоже внутри)
+  document.addEventListener("click", async (e) => {
     const rv = e.target.closest("[data-del-review]");
-    const cm = e.target.closest("[data-del-comment]");
-    if (!rv && !cm) return;
-    const path = rv ? `/api/reviews/${rv.dataset.delReview}/delete` : `/api/comments/${cm.dataset.delComment}/delete`;
-    await call(path, { body: {} }).catch(() => null);
-    if (S.filmId) viewFilm(S.filmId);
+    if (!rv) return;
+    await call(`/api/reviews/${rv.dataset.delReview}/delete`, { body: {} }).catch(() => null);
+    closeModal();
+    if (S.filmId && S.route === "film") viewFilm(S.filmId);
   });
 
   // ---- плеер ----
@@ -651,6 +713,14 @@
         <div class="vp-flash" id="vpFlash"></div>
         <div class="vp-skip l" id="vpSkipL"></div>
         <div class="vp-skip r" id="vpSkipR"></div>
+        <button class="vp-resume hidden" id="vpResume"></button>
+        <div class="vp-ad hidden" id="vpAd">
+          <video id="adVid" playsinline preload="auto"></video>
+          <button class="vp-ad-link" id="adLink" aria-label="Перейти по ссылке рекламы"></button>
+          <span class="vp-ad-tag">Реклама</span>
+          <button class="vp-ad-skip hidden" id="adSkip">Пропустить</button>
+          <div class="vp-ad-bar"><i id="adFill"></i></div>
+        </div>
         <div class="vp-err hidden" id="vpErr"></div>
         <div class="vp-subs" id="vpSubs"></div>
         <div class="vp-menu hidden" id="vpMenu"></div>
@@ -665,7 +735,7 @@
             <button class="vp-btn" id="vpPlay" aria-label="Воспроизвести">${ICON.play}</button>
             <div class="vp-vol">
               <button class="vp-btn" id="vpMute" aria-label="Звук">${ICON.vol}</button>
-              <input type="range" id="vpVol" min="0" max="1" step="0.02" aria-label="Громкость">
+              <div class="vp-vslider"><input type="range" id="vpVol" min="0" max="1" step="0.02" aria-label="Громкость"></div>
             </div>
             <span class="vp-time" id="vpTime">0:00 / 0:00</span>
             <span class="vp-grow"></span>
@@ -679,8 +749,10 @@
       </div>`;
 
     const vp = $("#vp"), video = $("#vid"), bar = $("#vpBar"), prog = $("#vpProg"), menu = $("#vpMenu");
+    const adVid = $("#adVid"), adEl = $("#vpAd"), adSkip = $("#adSkip"), adFill = $("#adFill"), adLink = $("#adLink"), resumeBtn = $("#vpResume");
     const subsBox = $("#vpSubs"), flash = $("#vpFlash");
-    const state = { hls: null, levels: [], menuPage: null, dragging: false, hideT: null, clickT: null, flashT: null, lastSave: 0, subTracks: [], curSub: "off" };
+    const state = { hls: null, levels: [], menuPage: null, dragging: false, hideT: null, clickT: null, flashT: null, lastSave: 0, subTracks: [], curSub: "off",
+      ad: null, adTimes: null, adIdx: 0, adSkipT: null, resumeAt: data.resumeAt || 0 };
     const dur = () => (isFinite(video.duration) && video.duration > 0 ? video.duration : (f.duration || 0));
 
     // ---- источник ----
@@ -768,6 +840,7 @@
       if (!video.paused && !state.menuPage) state.hideT = setTimeout(() => vp.classList.add("idle"), 2600);
     }
     function togglePlay() {
+      if (state.ad) return;
       if (video.ended) { video.currentTime = 0; }
       if (video.paused) video.play().catch(() => {}); else video.pause();
     }
@@ -881,6 +954,7 @@
       return Math.min(1, Math.max(0, (x - r.left) / r.width));
     };
     const seekTo = (t) => {
+      if (state.ad) return;
       if (!isFinite(t)) return;
       video.currentTime = Math.max(0, Math.min(t, dur() || t));
     };
@@ -950,6 +1024,91 @@
       $("#vpMute").innerHTML = v === 0 ? ICON.mute : ICON.vol;
     });
     video.addEventListener("error", () => { if (!state.hls && video.error) showError("Не удалось загрузить видео"); });
+
+    // ---- продолжение просмотра: кнопка по центру, без подложки ----
+    if (state.resumeAt > 0) resumeBtn.textContent = `Продолжить на ${fmtClock(state.resumeAt)}`;
+    else resumeBtn.classList.add("hidden");
+    resumeBtn.onclick = (e) => {
+      e.stopPropagation();
+      const at = state.resumeAt; state.resumeAt = 0;
+      resumeBtn.classList.add("hidden");
+      video.currentTime = at;
+      video.play().catch(() => {});
+    };
+    video.addEventListener("play", () => resumeBtn.classList.add("hidden"));
+
+    // ---- сохранение позиции на сервере (раз в 10 с, на паузе и при уходе) ----
+    const saveProgress = () => {
+      const d = dur();
+      if (state.ad || !d || !isFinite(video.currentTime) || video.currentTime <= 0) return;
+      fetch(`/api/films/${f.id}/progress`, {
+        method: "POST", keepalive: true,
+        headers: { "X-Init-Data": initData(), "Content-Type": "application/json" },
+        body: JSON.stringify({ position: video.currentTime, duration: d }),
+      }).catch(() => {});
+    };
+    const saveTimer = setInterval(() => { if (!video.paused) saveProgress(); }, 10000);
+    video.addEventListener("pause", saveProgress);
+    video.addEventListener("ended", saveProgress);
+    window.addEventListener("pagehide", saveProgress);
+
+    // ---- реклама (только без VIP): два показа в случайные моменты, без перемотки и паузы ----
+    const adCfg = data.ad || null;
+    if (adCfg) {
+      adVid.src = adCfg.src;
+      adLink.disabled = !adCfg.link;
+      adLink.onclick = (e) => {
+        e.stopPropagation();
+        if (!adCfg.link) return;
+        if (tg && tg.openLink) tg.openLink(adCfg.link); else window.open(adCfg.link, "_blank", "noopener");
+      };
+    }
+    const pickAdTimes = () => {
+      const d = dur();
+      if (!(d > 120)) return [];
+      const a = d * (0.1 + Math.random() * 0.35);
+      const b = d * (0.5 + Math.random() * 0.35);
+      return [a, b];
+    };
+    function startAd() {
+      state.ad = { back: video.currentTime };
+      video.pause();
+      vp.classList.add("ad-on");
+      resumeBtn.classList.add("hidden");
+      adEl.classList.remove("hidden");
+      adSkip.classList.add("hidden");
+      adFill.style.width = "0%";
+      adVid.currentTime = 0;
+      const go = () => adVid.play().catch(() => { adVid.muted = true; adVid.play().catch(() => endAd()); });
+      go();
+      clearTimeout(state.adSkipT);
+      state.adSkipT = setTimeout(() => adSkip.classList.remove("hidden"), 3000);
+    }
+    function endAd() {
+      if (!state.ad) return;
+      const back = state.ad.back;
+      state.ad = null;
+      clearTimeout(state.adSkipT);
+      adVid.pause();
+      adEl.classList.add("hidden");
+      vp.classList.remove("ad-on");
+      video.currentTime = back;
+      video.play().catch(() => {});
+    }
+    if (adCfg) {
+      adSkip.onclick = (e) => { e.stopPropagation(); endAd(); };
+      adVid.addEventListener("ended", endAd);
+      adVid.addEventListener("error", () => { if (state.ad) endAd(); });
+      adVid.addEventListener("timeupdate", () => {
+        if (adVid.duration) adFill.style.width = (adVid.currentTime / adVid.duration * 100) + "%";
+      });
+      video.addEventListener("timeupdate", () => {
+        if (state.ad) return;
+        if (state.adTimes === null) state.adTimes = pickAdTimes();
+        const next = state.adTimes[state.adIdx];
+        if (next !== undefined && video.currentTime >= next) { state.adIdx++; startAd(); }
+      });
+    }
     const onFs = () => {
       const on = document.fullscreenElement === vp;
       vp.classList.toggle("fs", on);
@@ -959,6 +1118,7 @@
 
     // клик по видео: пауза/воспроизведение, двойной клик: полный экран
     vp.addEventListener("click", (e) => {
+      if (state.ad || e.target.closest(".vp-resume")) return;
       if (e.target.closest(".vp-bar, .vp-menu")) return;
       if (state.menuPage) { closeMenu(); return; }
       wake();
@@ -981,6 +1141,7 @@
     vp.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT") return;
       const k = e.key;
+      if (state.ad && k !== "Escape") { e.preventDefault(); return; }
       let handled = true;
       if (k === " " || k === "k" || k === "K") togglePlay();
       else if (k === "ArrowRight") skip(5);
@@ -1004,7 +1165,10 @@
     wake();
     return {
       destroy() {
-        clearTimeout(state.hideT); clearTimeout(state.clickT); clearTimeout(state.flashT);
+        clearTimeout(state.hideT); clearTimeout(state.clickT); clearTimeout(state.flashT); clearTimeout(state.adSkipT);
+        clearInterval(saveTimer);
+        saveProgress();
+        window.removeEventListener("pagehide", saveProgress);
         document.removeEventListener("fullscreenchange", onFs);
         if (state.hls) { try { state.hls.destroy(); } catch (_) {} }
         video.pause(); video.removeAttribute("src"); video.load();
@@ -1065,8 +1229,7 @@
       ${S.me.vipActive && until ? `<p class="sub" style="margin-top:24px">Ваш VIP активен до ${esc(until)}</p>` : ""}`;
   }
 
-  function viewProfile() {
-    const p = S.config.prices;
+  async function viewProfile() {
     if (S.me.guest) {
       app.innerHTML = `<h1>Профиль</h1><p class="sub">Откройте приложение из Telegram, чтобы увидеть профиль.</p>`;
       return;
@@ -1075,22 +1238,32 @@
     app.innerHTML = `
       <h1>${esc(S.me.name)}</h1>
       <p class="sub">Роль: ${esc(S.me.roleTitle)} · ${vipLine}</p>
-      <div class="glass">
-        <h2>Права в боте</h2>
-        <p class="sub">Редактор добавляет фильмы и управляет своими. Админ управляет фильмами, редакторами и VIP.</p>
-        <div class="row">
-          ${S.me.canUpload ? "" : payButton("role_editor", p.editor, `Редактор · ${p.editor} ★`, "btn ghost")}
-          ${S.me.canManage ? "" : payButton("role_admin", p.admin, `Админ · ${p.admin} ★`, "btn ghost")}
-        </div>
-      </div>
-      ${S.me.canUpload ? '<p class="sub" style="margin-top:20px">Панель управления — в нижней навигации.</p>' : ""}`;
+      <p class="sub">ID: ${esc(S.me.id)}</p>
+      <section class="section">
+        <h2>История просмотров</h2>
+        <div id="history"><div class="empty">Загрузка...</div></div>
+      </section>`;
+    const rows = await call("/api/me/history").catch(() => []);
+    if (S.route !== "profile") return;
+    const short = (t, n) => (t.length > n ? t.slice(0, n).trim() + "…" : t);
+    $("#history").innerHTML = rows.length
+      ? rows.map((f) => `<a class="list-row hist-row" href="#/film/${f.id}">
+          <div class="thumb">${f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="" loading="lazy" onerror="this.remove()">` : ""}</div>
+          <div class="info">
+            <b>${esc(f.title)}</b>
+            ${f.description ? `<p>${esc(short(f.description, 90))} <span class="more">Читать дальше</span></p>` : ""}
+            <div>Дата выхода: ${esc(fmtRelease(f.releaseDate))}</div>
+            <div>Автор: ${esc(f.creator || "не указан")}</div>
+            <div>Страна: ${esc(f.country || "не указана")}</div>
+          </div></a>`).join("")
+      : '<div class="sub" style="margin:0">Вы пока ничего не смотрели</div>';
   }
 
   // ---- админ-панель ----
   async function viewAdmin(r) {
     const tab = r.tab || "films";
     const tabs = [["films", "Фильмы"], ["upload", "Загрузить"]];
-    if (S.me.canManage) tabs.push(["users", "Пользователи"]);
+    if (S.me.canManage) tabs.push(["ads", "Реклама"], ["users", "Пользователи"]);
     if (S.me.isOwner) tabs.push(["sales", "Продажи"]);
     app.innerHTML = `<h1>Админ-панель</h1><p class="sub">Видео загружаются здесь, размер файла до 2 ГБ.</p>
       <div class="tabs">${tabs.map(([k, t]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${t}</button>`).join("")}</div>
@@ -1102,6 +1275,7 @@
     if (tab === "films") await adminFilms(r.edit);
     if (tab === "upload") adminUpload();
     if (tab === "users") await adminUsers();
+    if (tab === "ads") await adminAds();
     if (tab === "sales") await adminSales();
   }
 
@@ -1168,6 +1342,7 @@
       <label class="field"><span>Описание</span><textarea id="e-desc" maxlength="4000">${esc(f.description)}</textarea></label>
       <label class="field"><span>Дата выхода</span><input type="date" id="e-date" value="${esc(f.releaseDate)}"></label>
       <label class="field"><span>Автор</span><input type="text" id="e-creator" value="${esc(f.creator)}" maxlength="120"></label>
+      <label class="field"><span>Страна</span><input type="text" id="e-country" value="${esc(f.country || "")}" maxlength="80"></label>
       ${f.kind === "link" ? `<label class="field"><span>Ссылка</span><input type="url" id="e-url" value="${esc(f.url || "")}"></label>` : ""}
       <label class="field"><span>Обложка</span><input type="file" id="posterInput" accept="image/*"></label>
       <label class="check"><input type="checkbox" id="e-vip" ${f.isVip ? "checked" : ""}> Фильм только для VIP</label>
@@ -1183,7 +1358,7 @@
   async function saveEdit(id) {
     const body = {
       title: $("#e-title").value, description: $("#e-desc").value, releaseDate: $("#e-date").value,
-      creator: $("#e-creator").value, isVip: $("#e-vip").checked, isActive: $("#e-active").checked,
+      creator: $("#e-creator").value, country: $("#e-country").value, isVip: $("#e-vip").checked, isActive: $("#e-active").checked,
     };
     if ($("#e-url")) body.url = $("#e-url").value;
     const r = await call(`/api/admin/films/${id}/update`, { body }).catch(() => null);
@@ -1277,6 +1452,7 @@
       <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
       <label class="field"><span>Дата выхода</span><input type="date" id="u-date"></label>
       <label class="field"><span>Автор</span><input type="text" id="u-creator" maxlength="120"></label>
+      <label class="field"><span>Страна</span><input type="text" id="u-country" maxlength="80"></label>
       <label class="field"><span>Обложка</span><input type="file" id="u-poster" accept="image/*"></label>
       <label class="check"><input type="checkbox" id="u-vip"> Фильм только для VIP</label>
       <div class="progress" id="u-progress"><div></div></div>
@@ -1294,6 +1470,7 @@
       fd.append("description", $("#u-desc").value);
       fd.append("releaseDate", $("#u-date").value);
       fd.append("creator", $("#u-creator").value);
+      fd.append("country", $("#u-country").value);
       fd.append("isVip", $("#u-vip").checked ? "1" : "0");
       if (kind.value === "video") {
         const f = $("#u-file").files[0];
@@ -1320,6 +1497,46 @@
   }
 
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  async function adminAds() {
+    const box = $("#admin");
+    const cur = await call("/api/admin/ad").catch(() => null);
+    if (!cur) { box.innerHTML = '<div class="empty">Нет доступа</div>'; return; }
+    box.innerHTML = `<div class="glass">
+      <h2>Реклама</h2>
+      <p class="sub">Ролик показывается пользователям без VIP дважды за просмотр, в случайные моменты. Через 3 секунды появляется кнопка «Пропустить». По клику на ролик открывается ссылка.</p>
+      <label class="field"><span>Ссылка рекламодателя</span><input type="text" id="adLinkInput" value="${esc(cur.link)}" placeholder="https://..." maxlength="500"></label>
+      <label class="field"><span>Ролик (видео)</span><input type="file" id="adFile" accept="video/*"></label>
+      <div class="row">
+        <button class="btn small" id="adSave">Сохранить</button>
+        ${cur.hasVideo ? '<button class="btn ghost small" id="adDel">Удалить ролик</button>' : ""}
+      </div>
+      <div class="progress" id="ad-progress"><div></div></div>
+      <p class="sub" style="margin:14px 0 0">${cur.hasVideo ? "Ролик загружен" : "Ролик не загружен"}</p>
+    </div>`;
+    $("#adSave").onclick = async () => {
+      const link = $("#adLinkInput").value.trim();
+      const file = $("#adFile").files[0];
+      const btn = $("#adSave");
+      btn.disabled = true;
+      try {
+        let uploadId = "";
+        if (file) {
+          if (file.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
+          uploadId = await uploadVideoChunked(file, $("#ad-progress"));
+        }
+        await call("/api/admin/ad", { body: { link, uploadId } });
+        toast("Реклама сохранена");
+        adminAds();
+      } catch (_) { /* тост уже показан */ } finally { btn.disabled = false; }
+    };
+    const del = $("#adDel");
+    if (del) del.onclick = async () => {
+      await call("/api/admin/ad/delete", { body: {} }).catch(() => null);
+      toast("Ролик удалён");
+      adminAds();
+    };
+  }
 
   async function adminUsers() {
     const box = $("#admin");
