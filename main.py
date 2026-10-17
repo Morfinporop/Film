@@ -4,18 +4,20 @@
 Весь проект запускается одним файлом: python main.py
 
 Бот: /start с текстом и кнопкой Mini App. Видео, отправленное админом боту, становится фильмом.
-Mini App: каталог, просмотр в HLS с выбором качества, отзывы, комментарии, VIP, админ-панель.
+Mini App: каталог, просмотр в HLS с выбором качества, отзывы, VIP, админ-панель.
 
-Роли: owner (OWNER_ID) > admin > editor > user.
-  owner  — всё, получает звёзды, возвраты, баланс бота.
-  admin  — фильмы любые, выдаёт редакторов, VIP, видит пользователей.
-  editor — загружает фильмы, управляет только своими.
-  user   — смотрит; VIP-фильмы открыты по подписке.
+Роли: owner (OWNER_ID) > admin > editor > operator > user.
+  owner    — всё, получает звёзды, возвраты, баланс бота.
+  admin    — фильмы любые, выдаёт редакторов, VIP, видит пользователей.
+  editor   — загружает фильмы, управляет только своими.
+  operator — только тикеты поддержки: отвечает и передаёт тикет админам.
+  user     — смотрит; VIP-фильмы открыты по подписке.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import html
@@ -39,10 +41,11 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import CommandStart
 from aiogram.types import (
     BotCommand,
+    ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     LabeledPrice,
@@ -61,18 +64,75 @@ STATIC_DIR = BASE_DIR / "static"
 DEFAULT_OWNER_ID = 7745681987
 DEFAULT_BACKGROUND = "https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg"
 DONATE_OPTIONS = (50, 100, 250, 500)
-LADDER = (144, 480, 720)                              # качества HLS: 144p, 480p, 720p (апскейл при низком исходнике)
-BITRATE_KBPS = {144: 120, 480: 1400, 720: 2500}
-AUDIO_KBPS = {144: 64}
+LADDER = (240, 720)                                   # качества HLS: 240p и 720p (низкий исходник масштабируется вверх)
+BITRATE_KBPS = {240: 400, 720: 2500}
+AUDIO_KBPS = {240: 64}
+
+# ---- жанры ----
+# Жанров два: «Аниме» и «Мультфильмы». Админ выбирает жанр при загрузке каждого видео
+# и каждой серии. Показывается на карточке в каталоге и рядом с названием на странице фильма.
+GENRES = ("anime", "cartoon")
+GENRE_TITLES = {"anime": "Аниме", "cartoon": "Мультфильмы"}
+DEFAULT_GENRE = "anime"
+
+# ---- VIP ----
+VIP_FOREVER = "9999-12-31 23:59:59"       # метка «навсегда»: дата далеко в будущем
+REVIEW_LIMIT = 1                          # отзывов на фильм без VIP
+REVIEW_LIMIT_VIP = 2                      # отзывов на фильм с VIP
+GRADIENT_RE = re.compile(r"^(linear|radial|conic)-gradient\((?:[^;{}<>\\\"']){0,300}\)$")
+COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 BOT_UPLOAD_LIMIT = 20 * 1024 * 1024             # лимит Bot API на скачивание файла (cloud API)
 UPLOAD_LIMIT = 2 * 1024 ** 3                    # максимум файла при загрузке через Mini App: 2 ГБ
-CHUNK_SIZE = 8 * 1024 * 1024                    # видео уходит частями: прокси не держит долгие запросы
-SUB_EXT = {".srt", ".vtt", ".ass", ".ssa", ".sub"}
+CHUNK_SIZE = 2 * 1024 * 1024                    # части по 2 МБ: на медленной отдаче часть успевает
+                                                # долететь раньше, чем прокси закроет долгий запрос (60 с)
 VIP_MONTH_DAYS, VIP_YEAR_DAYS = 30, 365
+VIEW_MIN_SEC = 300                            # просмотр засчитывается после 5 минут, а не в самом конце
+
+# ---- тикеты поддержки ----
+TICKET_KINDS = ("bug", "idea", "anime", "cartoon")
+TICKET_TITLES = {"bug": "Баг", "idea": "Идея", "anime": "Аниме", "cartoon": "Мультфильм"}
+TICKET_OPERATOR, TICKET_STAFF = "operator", "staff"   # у кого сейчас тикет: у операторов или у админов
+TICKET_ANSWER = ("Ваш тикет успешно отправлен, ожидайте рассмотрения. "
+                 "Обычно это занимает около 5-10 минут.")
+TICKET_CLOSED, TICKET_TTL = "closed", 600   # закрытый тикет удаляется из базы через 10 минут
+TICKET_IMAGE_MAX = 10 * 1024 * 1024         # 10 МБ на картинку к тикету хватает
+# картинку к тикету присылают в base64: внутри Telegram WebView multipart-загрузка
+# доходит не всегда, а base64 уходит тем же JSON-запросом, что и текст сообщения
+IMAGE_MAGIC = ((b"\x89PNG\r\n\x1a\n", ".png"), (b"\xff\xd8\xff", ".jpg"),
+               (b"GIF87a", ".gif"), (b"GIF89a", ".gif"), (b"BM", ".bmp"))
+TOUCH_EVERY = 60                            # как часто обновлять last_seen: запись в базу на каждый запрос дорога
+FFMPEG_NICE = 10                            # обработка видео уступает сайт и просмотр
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
 YOUTUBE_RE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]{6,})")
 
 log = logging.getLogger("film-hub")
+
+
+# ----------------------------------------------------------------------------
+# Мелкие помощники (жанры, «навсегда», градиенты)
+# ----------------------------------------------------------------------------
+def clean_genre(value: Any, default: str | None = DEFAULT_GENRE) -> str | None:
+    """Приводит значение к одному из двух жанров. Пустое или неизвестное — default."""
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return default
+    return raw if raw in GENRES else default
+
+
+def is_forever(value: str | None) -> bool:
+    """VIP выдан навсегда (метка — дата 9999 года)."""
+    return bool(value) and str(value).startswith("9999")
+
+
+def clean_gradient(value: Any) -> tuple[bool, str | None]:
+    """Проверяет оформление ника VIP: (подошло, значение). Разрешены цвет #rrggbb и CSS-градиент.
+    Пустая строка — сброс оформления (подошло, None)."""
+    raw = re.sub(r"\s+", " ", str(value or "").strip())[:300]
+    if not raw:
+        return True, None
+    if COLOR_RE.match(raw) or GRADIENT_RE.match(raw):
+        return True, raw
+    return False, None
 
 
 # ============================================================================
@@ -171,9 +231,10 @@ def load_config(env: Any = os.environ) -> Config:
 # ============================================================================
 # Роли и права
 # ============================================================================
-OWNER, ADMIN, EDITOR, USER = "owner", "admin", "editor", "user"
-RANK = {USER: 0, EDITOR: 1, ADMIN: 2, OWNER: 3}
-ROLE_TITLES = {OWNER: "Владелец", ADMIN: "Админ", EDITOR: "Редактор", USER: "Пользователь"}
+OWNER, ADMIN, EDITOR, OPERATOR, USER = "owner", "admin", "editor", "operator", "user"
+RANK = {USER: 0, OPERATOR: 1, EDITOR: 2, ADMIN: 3, OWNER: 4}
+ROLE_TITLES = {OWNER: "Владелец", ADMIN: "Админ", EDITOR: "Редактор",
+               OPERATOR: "Оператор", USER: "Пользователь"}
 
 
 def at_least(role: str, minimum: str) -> bool:
@@ -212,6 +273,7 @@ CREATE TABLE IF NOT EXISTS films (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     title         TEXT    NOT NULL,
     kind          TEXT    NOT NULL CHECK (kind IN ('link', 'video', 'series')),
+    genre         TEXT    NOT NULL DEFAULT 'anime',
     url           TEXT,
     video_file_id TEXT,
     photo_file_id TEXT,
@@ -237,26 +299,21 @@ CREATE TABLE IF NOT EXISTS users (
     first_name  TEXT,
     role        TEXT    NOT NULL DEFAULT 'user',
     vip_until   TEXT,
+    vip_forever INTEGER NOT NULL DEFAULT 0,
+    stars       INTEGER NOT NULL DEFAULT 0,
+    name_gradient TEXT,
     added_by    INTEGER,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     last_seen   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- уникальности (film_id, user_id) нет: с VIP на фильм можно оставить два отзыва
 CREATE TABLE IF NOT EXISTS reviews (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     film_id    INTEGER NOT NULL,
     user_id    INTEGER NOT NULL,
     rating     INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
     text       TEXT    NOT NULL DEFAULT '',
-    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (film_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS comments (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    film_id    INTEGER NOT NULL,
-    user_id    INTEGER NOT NULL,
-    text       TEXT    NOT NULL,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -290,14 +347,50 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- избранное: что пользователь отложил посмотреть позже
+CREATE TABLE IF NOT EXISTS favorites (
+    user_id    INTEGER NOT NULL,
+    film_id    INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, film_id)
+);
+
+-- тикеты поддержки: assignee — у кого тикет сейчас (операторы или админы)
+CREATE TABLE IF NOT EXISTS tickets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    kind       TEXT    NOT NULL CHECK (kind IN ('bug', 'idea', 'anime', 'cartoon')),
+    text       TEXT    NOT NULL,
+    assignee   TEXT    NOT NULL DEFAULT 'operator' CHECK (assignee IN ('operator', 'staff')),
+    status     TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    closed_at  TEXT,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- переписка внутри тикета; удаляется вместе с тикетом (ON DELETE CASCADE)
+CREATE TABLE IF NOT EXISTS ticket_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id   INTEGER NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+    author_id   INTEGER NOT NULL,
+    author_role TEXT    NOT NULL,
+    text        TEXT    NOT NULL,
+    image       TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_films_active ON films (is_active, id);
 CREATE INDEX IF NOT EXISTS idx_films_owner ON films (owner_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_film ON reviews (film_id);
-CREATE INDEX IF NOT EXISTS idx_comments_film ON comments (film_id, id);
 CREATE INDEX IF NOT EXISTS idx_sales_refund ON sales (refunded, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets (assignee, id);
+CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets (user_id, id);
+CREATE INDEX IF NOT EXISTS idx_ticket_messages ON ticket_messages (ticket_id, id);
+CREATE INDEX IF NOT EXISTS idx_watch_user ON watch (user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites (user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_closed ON tickets (status, closed_at);
 """
 
 # колонки, которых могло не быть в ранних версиях
@@ -322,7 +415,42 @@ FILM_COLUMNS = {
     "photo_file_id": "TEXT",
     "video_file_id": "TEXT",
     "url": "TEXT",
+    "genre": "TEXT NOT NULL DEFAULT 'anime'",
 }
+
+# колонки watch, которых могло не быть раньше
+WATCH_COLUMNS = {
+    "counted": "INTEGER NOT NULL DEFAULT 0",   # просмотр уже засчитан (один раз на фильм)
+}
+
+# колонки tickets/ticket_messages, которых могло не быть раньше
+TICKET_COLUMNS = {"status": "TEXT NOT NULL DEFAULT 'open'", "closed_at": "TEXT"}
+MESSAGE_COLUMNS = {"image": "TEXT"}
+
+# колонки users, которых могло не быть раньше
+USER_COLUMNS = {
+    "banned": "INTEGER NOT NULL DEFAULT 0",
+    "tour_seen": "INTEGER NOT NULL DEFAULT 0",   # подсказки по кнопкам показаны — больше не показывать
+    "vip_forever": "INTEGER NOT NULL DEFAULT 0",
+    "stars": "INTEGER NOT NULL DEFAULT 0",
+    "name_gradient": "TEXT",
+}
+
+
+def sniff_image(data: bytes) -> str | None:
+    """Расширение картинки по её первым байтам. None — это не картинка: тип узнаём по
+    содержимому, а не по имени файла, поэтому подсунуть вместо картинки файл нельзя."""
+    for magic, ext in IMAGE_MAGIC:
+        if data.startswith(magic):
+            return ext
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if data[4:8] == b"ftyp":                      # HEIC и AVIF прямо с телефона
+        return ".heic" if data[8:12] in (b"heic", b"heix", b"mif1", b"msf1") else ".avif"
+    head = data[:300].lstrip().lower()
+    if head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in data[:4096].lower()):
+        return ".svg"
+    return None
 
 
 class Database:
@@ -354,7 +482,9 @@ class Database:
             self.conn.execute(f"ALTER TABLE payments RENAME TO payments_legacy_{stamp}")
         # 2. старая films с CHECK на video_file_id не даёт загружать фильмы через Mini App — пересоздаём
         old_films_sql = self._table_sql("films")
-        if old_films_sql and ("video_file_id IS NOT NULL" in old_films_sql or "kind IN ('link', 'video')" in old_films_sql):
+        flat_films_sql = re.sub(r"\s+", "", old_films_sql)   # пробелы в CHECK могут отличаться
+        if flat_films_sql and ("video_file_idISNOTNULL" in flat_films_sql
+                               or "kindIN('link','video')" in flat_films_sql):
             old_cols = self._columns("films")
             self.conn.execute("DROP INDEX IF EXISTS idx_films_active")
             self.conn.execute(f"ALTER TABLE films RENAME TO films_old_{stamp}")
@@ -369,12 +499,42 @@ class Database:
                 )
             log.warning("таблица films пересоздана, старые данные в films_old_%s", stamp)
 
+        # 3. старая таблица отзывов с UNIQUE (film_id, user_id) не даёт оставить второй отзыв — пересоздаём
+        old_reviews_sql = self._table_sql("reviews")
+        if old_reviews_sql and "UNIQUE" in old_reviews_sql.upper():
+            self.conn.execute("DROP INDEX IF EXISTS idx_reviews_film")
+            self.conn.execute(f"ALTER TABLE reviews RENAME TO reviews_old_{stamp}")
+            self.conn.executescript(TABLES)
+            self.conn.execute(
+                "INSERT INTO reviews (id, film_id, user_id, rating, text, created_at) "
+                f"SELECT id, film_id, user_id, rating, text, created_at FROM reviews_old_{stamp}"
+            )
+            log.warning("таблица reviews пересоздана, старые данные в reviews_old_%s", stamp)
+
         self.conn.executescript(TABLES)
         for column, ddl in FILM_COLUMNS.items():
             if column not in self._columns("films"):
                 self.conn.execute(f"ALTER TABLE films ADD COLUMN {column} {ddl}")
         if "vip_until" not in self._columns("users"):
             self.conn.execute("ALTER TABLE users ADD COLUMN vip_until TEXT")
+        for column, ddl in USER_COLUMNS.items():
+            if column not in self._columns("users"):
+                self.conn.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl}")
+        for column, ddl in WATCH_COLUMNS.items():
+            if column not in self._columns("watch"):
+                self.conn.execute(f"ALTER TABLE watch ADD COLUMN {column} {ddl}")
+        for table, columns in (("tickets", TICKET_COLUMNS), ("ticket_messages", MESSAGE_COLUMNS)):
+            have = self._columns(table)
+            for column, ddl in columns.items():
+                if column not in have:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        # у тех, у кого VIP помечен «навсегда», дата уже стоит far-future — синхронизируем флаг
+        self.conn.execute("UPDATE users SET vip_forever = 1 WHERE vip_until LIKE '9999%'")
+        # жанров осталось два: старые значения («Фильмы», «Сериалы») приводим к «Аниме»,
+        # нужный жанр админ выбирает в редакторе фильма
+        self.conn.execute("UPDATE films SET genre = 'anime' WHERE genre IS NULL OR genre NOT IN ('anime','cartoon')")
+        # сезоны убраны: старые серии сводим в один плоский список
+        self.conn.execute("UPDATE films SET season = 1 WHERE season <> 1")
         self.conn.executescript(INDEXES)
 
     # ---- пользователи ----
@@ -386,12 +546,37 @@ class Database:
         return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
 
     def touch_user(self, tg_id: int, username: str | None, first_name: str | None) -> None:
+        """Регистрирует пользователя и обновляет last_seen не чаще раза в минуту.
+
+        Плеер во время просмотра шлёт запрос каждые несколько секунд, а каждая запись
+        в SQLite — это транзакция и обращение к диску. На хостинге с 1 ГБ RAM
+        запись на каждый запрос и создавала лишнюю нагрузку.
+        """
+        row = self._one("SELECT username, first_name, last_seen FROM users WHERE tg_id = ?", (tg_id,))
+        if row is None:
+            self.conn.execute("INSERT INTO users (tg_id, username, first_name) VALUES (?, ?, ?)",
+                              (tg_id, username, first_name))
+            return
+        last = parse_dt(row["last_seen"])
+        fresh = bool(last and (utcnow() - last).total_seconds() < TOUCH_EVERY)
+        same = (not username or row["username"] == username) and (not first_name or row["first_name"] == first_name)
+        if fresh and same:
+            return
         self.conn.execute(
-            """INSERT INTO users (tg_id, username, first_name) VALUES (?, ?, ?)
-               ON CONFLICT(tg_id) DO UPDATE SET username = excluded.username,
-                 first_name = excluded.first_name, last_seen = datetime('now')""",
-            (tg_id, username, first_name),
+            """UPDATE users SET username = COALESCE(?, username),
+                 first_name = COALESCE(?, first_name), last_seen = datetime('now')
+               WHERE tg_id = ?""",
+            (username, first_name, tg_id),
         )
+
+    # ---- бан ----
+    def set_banned(self, tg_id: int, banned: bool) -> None:
+        self.touch_user(tg_id, None, None)
+        self.conn.execute("UPDATE users SET banned = ? WHERE tg_id = ?", (1 if banned else 0, tg_id))
+
+    def set_tour_seen(self, tg_id: int) -> None:
+        """Подсказки по интерфейсу показаны: запоминаем, чтобы не показывать их снова."""
+        self.conn.execute("UPDATE users SET tour_seen = 1 WHERE tg_id = ?", (tg_id,))
 
     def get_user(self, tg_id: int) -> dict | None:
         return self._one("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
@@ -407,9 +592,6 @@ class Database:
             (tg_id, role, added_by),
         )
 
-    def staff(self) -> list[dict]:
-        return self._all("SELECT * FROM users WHERE role IN ('admin', 'editor') ORDER BY role, tg_id")
-
     def search_users(self, q: str, limit: int = 30) -> list[dict]:
         if q:
             return self._all(
@@ -423,11 +605,56 @@ class Database:
         """Продлевает VIP на days дней; отрицательное значение сокращает срок, но не ниже текущего момента."""
         self.touch_user(tg_id, None, None)
         now = utcnow()
-        current = parse_dt((self.get_user(tg_id) or {}).get("vip_until")) or now
+        row = self.get_user(tg_id) or {}
+        forever = is_forever(row.get("vip_until")) or bool(row.get("vip_forever"))
+        if forever:
+            # бессрочный VIP не продлевается и не режется отрезками: снять его можно только revoke_vip()
+            return parse_dt(VIP_FOREVER) or now
+        current = parse_dt(row.get("vip_until")) or now
         new_until = max(current, now) + timedelta(days=days)
         new_until = max(new_until, now)
-        self.conn.execute("UPDATE users SET vip_until = ? WHERE tg_id = ?", (fmt_dt(new_until), tg_id))
+        new_until = min(new_until, datetime(9998, 12, 30, tzinfo=timezone.utc))  # страховка от переполнения даты
+        self.conn.execute(
+            "UPDATE users SET vip_until = ?, vip_forever = 0 WHERE tg_id = ?", (fmt_dt(new_until), tg_id)
+        )
         return new_until
+
+    def grant_vip_forever(self, tg_id: int) -> None:
+        """VIP без срока: в базе метка 9999 года, в интерфейсе — переливающийся символ ∞."""
+        self.touch_user(tg_id, None, None)
+        self.conn.execute(
+            "UPDATE users SET vip_until = ?, vip_forever = 1 WHERE tg_id = ?", (VIP_FOREVER, tg_id)
+        )
+
+    def revoke_vip(self, tg_id: int) -> None:
+        """Полностью снимает VIP (и бессрочный тоже)."""
+        self.touch_user(tg_id, None, None)
+        self.conn.execute("UPDATE users SET vip_until = NULL, vip_forever = 0 WHERE tg_id = ?", (tg_id,))
+
+    # ---- звёзды на внутреннем балансе ----
+    def star_balance(self, tg_id: int) -> int:
+        row = self.get_user(tg_id) or {}
+        return max(0, int(row.get("stars") or 0))
+
+    def add_stars(self, tg_id: int, amount: int) -> int:
+        """Начисляет (или списывает при минусе) звёзды. Возвращает новый баланс, он не уходит в минус."""
+        self.touch_user(tg_id, None, None)
+        balance = max(0, self.star_balance(tg_id) + int(amount))
+        self.conn.execute("UPDATE users SET stars = ? WHERE tg_id = ?", (balance, tg_id))
+        return balance
+
+    def spend_stars(self, tg_id: int, amount: int) -> bool:
+        """Списывает звёзды, если их хватает."""
+        if amount <= 0 or self.star_balance(tg_id) < amount:
+            return False
+        self.conn.execute(
+            "UPDATE users SET stars = stars - ? WHERE tg_id = ? AND stars >= ?", (amount, tg_id, amount)
+        )
+        return self.conn.execute("SELECT changes() AS n").fetchone()["n"] > 0
+
+    def set_name_gradient(self, tg_id: int, gradient: str | None) -> None:
+        self.touch_user(tg_id, None, None)
+        self.conn.execute("UPDATE users SET name_gradient = ? WHERE tg_id = ?", (gradient, tg_id))
 
     def display_name(self, tg_id: int) -> str:
         u = self.get_user(tg_id) or {}
@@ -444,7 +671,7 @@ class Database:
 
     def update_film(self, film_id: int, **fields: Any) -> None:
         allowed = {"title", "description", "release_date", "creator", "is_vip", "is_active",
-                   "url", "status", "error", "duration", "width", "height", "poster", "country"}
+                   "url", "status", "error", "duration", "width", "height", "poster", "country", "genre"}
         items = [(k, v) for k, v in fields.items() if k in allowed]
         if not items:
             return
@@ -456,7 +683,6 @@ class Database:
 
     def delete_film(self, film_id: int) -> None:
         self.conn.execute("DELETE FROM reviews WHERE film_id = ?", (film_id,))
-        self.conn.execute("DELETE FROM comments WHERE film_id = ?", (film_id,))
         self.conn.execute("DELETE FROM watch WHERE film_id = ?", (film_id,))
         self.conn.execute("DELETE FROM films WHERE id = ?", (film_id,))
 
@@ -478,7 +704,8 @@ class Database:
     def vacuum(self) -> None:
         self.conn.execute("VACUUM")
 
-    def list_films(self, *, public: bool = True, owner_id: int | None = None, limit: int = 500) -> list[dict]:
+    def list_films(self, *, public: bool = True, owner_id: int | None = None,
+                   limit: int = 500) -> list[dict]:
         where, params = ["series_id IS NULL"], []
         if public:
             where.append("is_active = 1 AND status = 'ready'")
@@ -489,11 +716,11 @@ class Database:
         return self._all(f"SELECT * FROM films{clause} ORDER BY id DESC LIMIT ?", (*params, limit))
 
     def episodes(self, series_id: int) -> list[dict]:
-        return self._all("SELECT * FROM films WHERE series_id = ? ORDER BY season, episode, id", (series_id,))
+        return self._all("SELECT * FROM films WHERE series_id = ? ORDER BY episode, id", (series_id,))
 
-    def episode_exists(self, series_id: int, season: int, episode: int) -> bool:
-        return self._one("SELECT id FROM films WHERE series_id = ? AND season = ? AND episode = ?",
-                         (series_id, season, episode)) is not None
+    def episode_exists(self, series_id: int, episode: int) -> bool:
+        return self._one("SELECT id FROM films WHERE series_id = ? AND episode = ?",
+                         (series_id, episode)) is not None
 
     def list_video_films(self) -> list[dict]:
         return self._all("SELECT * FROM films WHERE kind = 'video' ORDER BY id")
@@ -501,17 +728,60 @@ class Database:
     def add_view(self, film_id: int) -> None:
         self.conn.execute("UPDATE films SET views = views + 1 WHERE id = ?", (film_id,))
 
-    # ---- отзывы и комментарии ----
-    def upsert_review(self, film_id: int, user_id: int, rating: int, text: str) -> None:
+    def register_view(self, user_id: int, film_id: int, position: float, duration: float) -> bool:
+        """Засчитывает просмотр, когда зритель посмотрел 5 минут (VIEW_MIN_SEC).
+
+        Досматривать до конца не нужно: в конце титры и субтитры, их смотрят не все.
+        Если сам ролик короче пяти минут, достаточно досмотреть почти до конца.
+        Один пользователь даёт фильму один просмотр — повторный запуск счётчик не крутит.
+        """
+        row = self._one("SELECT counted FROM watch WHERE user_id = ? AND film_id = ?", (user_id, film_id))
+        if row and row["counted"]:
+            return False
+        need = VIEW_MIN_SEC if duration <= 0 else min(VIEW_MIN_SEC, max(20.0, duration * 0.9))
+        if position < need:
+            return False
         self.conn.execute(
-            """INSERT INTO reviews (film_id, user_id, rating, text) VALUES (?, ?, ?, ?)
-               ON CONFLICT(film_id, user_id) DO UPDATE SET rating = excluded.rating,
-                 text = excluded.text, created_at = datetime('now')""",
+            """INSERT INTO watch (user_id, film_id, position, duration, counted) VALUES (?, ?, ?, ?, 1)
+               ON CONFLICT(user_id, film_id) DO UPDATE SET counted = 1""",
+            (user_id, film_id, max(0.0, position), max(0.0, duration)),
+        )
+        self.add_view(film_id)
+        return True
+
+    # ---- отзывы ----
+    def count_user_reviews(self, film_id: int, user_id: int) -> int:
+        return self._one("SELECT COUNT(*) AS n FROM reviews WHERE film_id = ? AND user_id = ?",
+                         (film_id, user_id))["n"]
+
+    def add_review(self, film_id: int, user_id: int, rating: int, text: str) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO reviews (film_id, user_id, rating, text) VALUES (?, ?, ?, ?)",
             (film_id, user_id, rating, text),
         )
+        return int(cur.lastrowid)
 
-    def reviews(self, film_id: int) -> list[dict]:
-        return self._all("SELECT * FROM reviews WHERE film_id = ? ORDER BY id DESC LIMIT 100", (film_id,))
+    def update_review(self, review_id: int, rating: int, text: str) -> None:
+        self.conn.execute(
+            "UPDATE reviews SET rating = ?, text = ?, created_at = datetime('now') WHERE id = ?",
+            (rating, text, review_id),
+        )
+
+    def reviews(self, film_id: int, owner_id: int, limit: int = 300) -> list[dict]:
+        """Отзывы фильма: сначала отзывы с VIP (их видно сразу), потом обычные.
+        Внутри каждой группы — новые сверху. Порядок совпадает с золотой припиской VIP."""
+        return self._all(
+            """SELECT r.*, u.role AS u_role, u.vip_until AS u_vip_until, u.vip_forever AS u_vip_forever
+               FROM reviews r LEFT JOIN users u ON u.tg_id = r.user_id
+               WHERE r.film_id = ?
+               ORDER BY CASE WHEN u.tg_id = ? OR u.role IN ('admin', 'owner')
+                                  OR COALESCE(u.vip_forever, 0) = 1
+                                  OR (u.vip_until IS NOT NULL AND u.vip_until > ?)
+                             THEN 0 ELSE 1 END,
+                        r.id DESC
+               LIMIT ?""",
+            (film_id, owner_id, fmt_dt(utcnow()), limit),
+        )
 
     def rating(self, film_id: int) -> tuple[float, int]:
         row = self._one("SELECT AVG(rating) AS avg, COUNT(*) AS n FROM reviews WHERE film_id = ?", (film_id,))
@@ -523,22 +793,95 @@ class Database:
     def delete_review(self, review_id: int) -> None:
         self.conn.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
 
-    def add_comment(self, film_id: int, user_id: int, text: str) -> int:
-        return int(self.conn.execute(
-            "INSERT INTO comments (film_id, user_id, text) VALUES (?, ?, ?)", (film_id, user_id, text)
-        ).lastrowid)
+    # ---- избранное ----
+    def favorites(self, user_id: int) -> list[int]:
+        return [r["film_id"] for r in self._all(
+            "SELECT film_id FROM favorites WHERE user_id = ? ORDER BY created_at DESC, film_id DESC",
+            (user_id,))]
 
-    def comments(self, film_id: int) -> list[dict]:
-        return self._all("SELECT * FROM comments WHERE film_id = ? ORDER BY id DESC LIMIT 200", (film_id,))
+    def toggle_favorite(self, user_id: int, film_id: int) -> bool:
+        """Кладёт в избранное или убирает из него. Возвращает True, если теперь в избранном."""
+        row = self._one("SELECT film_id FROM favorites WHERE user_id = ? AND film_id = ?", (user_id, film_id))
+        if row:
+            self.conn.execute("DELETE FROM favorites WHERE user_id = ? AND film_id = ?", (user_id, film_id))
+            return False
+        self.conn.execute("INSERT INTO favorites (user_id, film_id) VALUES (?, ?)", (user_id, film_id))
+        return True
 
-    def comment_count(self, film_id: int) -> int:
-        return self._one("SELECT COUNT(*) AS n FROM comments WHERE film_id = ?", (film_id,))["n"]
+    # ---- тикеты поддержки ----
+    def add_ticket(self, user_id: int, kind: str, text: str) -> int:
+        self.touch_user(user_id, None, None)
+        cur = self.conn.execute("INSERT INTO tickets (user_id, kind, text) VALUES (?, ?, ?)",
+                                (user_id, kind, text))
+        return int(cur.lastrowid)
 
-    def get_comment(self, comment_id: int) -> dict | None:
-        return self._one("SELECT * FROM comments WHERE id = ?", (comment_id,))
+    def get_ticket(self, ticket_id: int) -> dict | None:
+        return self._one("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
 
-    def delete_comment(self, comment_id: int) -> None:
-        self.conn.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+    def tickets(self, user_id: int | None = None, assignee: str | None = None,
+                limit: int = 200) -> list[dict]:
+        """Список тикетов: свои (user_id), у операторов или у админов (assignee), либо все."""
+        where, params = [], []
+        if user_id is not None:
+            where.append("user_id = ?")
+            params.append(user_id)
+        if assignee is not None:
+            where.append("assignee = ?")
+            params.append(assignee)
+        clause = f" WHERE {' AND '.join(where)}" if where else ""
+        return self._all(f"SELECT * FROM tickets{clause} ORDER BY id DESC LIMIT ?", (*params, limit))
+
+    def ticket_queue(self) -> dict[int, int]:
+        """Номер в очереди: порядковый номер среди тикетов, которые ждут у операторов (старые первыми)."""
+        rows = self._all("SELECT id FROM tickets WHERE assignee = 'operator' ORDER BY id")
+        return {r["id"]: i + 1 for i, r in enumerate(rows)}
+
+    def ticket_messages(self, ticket_id: int) -> list[dict]:
+        return self._all("SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY id", (ticket_id,))
+
+    def add_ticket_message(self, ticket_id: int, author_id: int, role: str, text: str,
+                           image: str | None = None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO ticket_messages (ticket_id, author_id, author_role, text, image) VALUES (?, ?, ?, ?, ?)",
+            (ticket_id, author_id, role, text, image),
+        )
+        return int(cur.lastrowid)
+
+    def close_ticket(self, ticket_id: int) -> None:
+        self.conn.execute("UPDATE tickets SET status = 'closed', closed_at = datetime('now') WHERE id = ?",
+                          (ticket_id,))
+
+    def drop_expired_tickets(self, ttl: int = TICKET_TTL) -> list[int]:
+        """Закрытые тикеты удаляются из базы через ttl секунд — вместе с перепиской и картинками."""
+        rows = self._all(
+            "SELECT id FROM tickets WHERE status = 'closed' AND closed_at IS NOT NULL "
+            "AND closed_at <= datetime('now', ?)", (f"-{int(ttl)} seconds",))
+        for row in rows:
+            self.delete_ticket(row["id"])
+        return [r["id"] for r in rows]
+
+    def get_ticket_message(self, message_id: int) -> dict | None:
+        return self._one("SELECT * FROM ticket_messages WHERE id = ?", (message_id,))
+
+    def set_ticket_assignee(self, ticket_id: int, assignee: str) -> None:
+        self.conn.execute("UPDATE tickets SET assignee = ? WHERE id = ?", (assignee, ticket_id))
+
+    def delete_ticket(self, ticket_id: int) -> None:
+        """Удаляет тикет вместе с перепиской из базы (внешний ключ с ON DELETE CASCADE)."""
+        self.conn.execute("DELETE FROM ticket_messages WHERE ticket_id = ?", (ticket_id,))
+        self.conn.execute("DELETE FROM tickets WHERE id = ?", (ticket_id,))
+
+    def delete_user_tickets(self, user_id: int) -> int:
+        """Пользователь ушёл из бота — его тикеты удаляются сразу и полностью."""
+        rows = self._all("SELECT id FROM tickets WHERE user_id = ?", (user_id,))
+        for row in rows:
+            self.delete_ticket(row["id"])
+        return len(rows)
+
+    def staff_ids(self, minimum: str = ADMIN) -> list[int]:
+        """Кому передавать тикет: владелец плюс все, у кого роль не ниже minimum."""
+        rows = self._all("SELECT tg_id, role FROM users")
+        return [r["tg_id"] for r in rows if at_least(r["role"], minimum)]
 
     # ---- просмотры, прогресс, настройки ----
     def touch_watch(self, user_id: int, film_id: int) -> None:
@@ -583,16 +926,6 @@ class Database:
 
     def delete_ad(self, ad_id: int) -> None:
         self.conn.execute("DELETE FROM ads WHERE id = ?", (ad_id,))
-
-    def get_setting(self, key: str) -> str | None:
-        row = self._one("SELECT value FROM settings WHERE key = ?", (key,))
-        return row["value"] if row else None
-
-    def set_setting(self, key: str, value: str) -> None:
-        self.conn.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (key, value),
-        )
 
     # ---- продажи ----
     def record_sale(self, user_id: int, kind: str, amount: int, charge_id: str) -> bool:
@@ -648,6 +981,11 @@ async def _run(args: list[str]) -> bytes:
     proc = await asyncio.create_subprocess_exec(
         ffmpeg_bin(), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
+    try:
+        # обработка не должна мешать сайту и просмотру: у ffmpeg приоритет ниже обычного
+        os.setpriority(os.PRIO_PROCESS, proc.pid, FFMPEG_NICE)
+    except OSError:
+        pass
     _, err = await proc.communicate()
     return err
 
@@ -661,20 +999,39 @@ def sub_name(lang: str) -> str:
     return ISO3.get(code, code) or "und"
 
 
-def target_ladder(height: int) -> list[int]:
-    """Какие качества нужны для исходника такой высоты: не апскейлим выше оригинала."""
-    sub = [h for h in LADDER if h <= height]
-    return sub or [LADDER[0]]
+def target_ladder() -> list[int]:
+    """Какие качества нужны для фильма: всегда весь набор 240p/720p.
+
+    Низкий исходник масштабируется вверх — фильм появляется в каталоге только тогда,
+    когда готовы сразу оба качества.
+    """
+    return list(LADDER)
 
 
-def hls_ready(folder: Path, height: int = 0) -> bool:
-    """Готовы ли все нужные для этого исходника качества и плейлисты на месте."""
+def mark_lost_sources(db: "Database", media_dir: Path) -> list[int]:
+    """Фильмы без исходника (контейнер обновили посреди загрузки) помечает failed с понятной
+    причиной: повторять обработку не из чего, админ увидит причину и загрузит видео заново."""
+    marked = []
+    for film in db.list_video_films():
+        if film["status"] == "failed" or film["video_file_id"]:
+            continue
+        folder = media_dir / str(film["id"])
+        if (folder / "source.mp4").exists():
+            continue
+        if film["status"] == "ready" and (folder / "master.m3u8").exists():
+            continue  # видео уже собрано, исходник не нужен
+        db.set_status(film["id"], "failed", "Источник видео не найден — загрузите видео заново")
+        marked.append(film["id"])
+    return marked
+
+
+def hls_ready(folder: Path) -> bool:
+    """Готовы ли оба качества (240p, 720p) и все плейлисты на месте."""
     master = folder / "master.m3u8"
     if not master.exists():
         return False
     names = {int(n[:-1]) for n in re.findall(r'NAME="(\d+p)"', master.read_text(encoding="utf-8", errors="replace"))}
-    target = set(target_ladder(height)) if height else set(LADDER)
-    return target <= names and all((folder / f"{h}p" / "index.m3u8").exists() for h in names)
+    return set(LADDER) <= names and all((folder / f"{h}p" / "index.m3u8").exists() for h in names)
 
 
 def convert_subtitle(src: Path, dest: Path) -> None:
@@ -716,10 +1073,10 @@ async def probe(src: Path) -> tuple[int, int, int]:
 class Transcoder:
     """Одна фоновая очередь: скачивает файл из Telegram (если нужно) и строит HLS-качества.
 
-    Качества собираются по очереди от самого лёгкого (144p) к тяжёлому. Как только готово
-    первое качество, фильм сразу открывается для просмотра (статус 'ready'), а остальные
-    качества доливаются в фон и подключаются к master-плейлисту по готовности — как у YouTube,
-    без ожидания полной обработки всех разрешений.
+    Оба качества (240p и 720p) собираются ОДНИМ процессом ffmpeg: исходник декодируется
+    один раз, а в памяти висит один процесс, а не несколько — на хостинге с двумя ядрами
+    и гигабайтом RAM это и быстрее, и без упора в лимит памяти. Фильм открывается только
+    когда готовы оба качества: тогда один раз пишется master-плейлист со всеми дорожками.
     """
 
     def __init__(self, bot: Bot, db: Database, media_dir: Path) -> None:
@@ -782,8 +1139,8 @@ class Transcoder:
         if not height:
             raise RuntimeError("Файл не распознан как видео")
 
-        # не кодируем качества выше исходника — не тратим время на бессмысленный апскейл
-        ladder = target_ladder(height)  # от лёгкого к тяжёлому: 144p первым
+        # всегда весь набор качеств: фильм выходит на главную только когда готовы оба
+        ladder = target_ladder()
 
         for old in folder.iterdir():
             if old.is_dir() and re.fullmatch(r"\d+p", old.name) and old.name not in {f"{h}p" for h in ladder}:
@@ -801,18 +1158,15 @@ class Transcoder:
             tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
             os.replace(tmp, folder / "master.m3u8")  # атомарная подмена, не ломает тех, кто уже смотрит
 
-        done_variants: list[tuple[int, int, int]] = []
-        for h in ladder:
-            if self.db.get_film(film_id) is None:  # фильм удалили во время обработки
-                return
+        def variant_args(h: int) -> tuple[list[str], int, int]:
+            """Аргументы ffmpeg для одного качества: свой масштаб, битрейт и пресет."""
             w = max(2, round(width * h / height / 2) * 2)
             out = build / f"{h}p"
             out.mkdir(exist_ok=True)
             kbps = BITRATE_KBPS[h]
             akbps = AUDIO_KBPS.get(h, 128)
-            preset = "veryfast" if h >= 720 else "ultrafast"  # лёгкие качества собираем максимально быстро
-            err = await _run([
-                "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+            preset = "veryfast" if h >= 720 else "ultrafast"   # 720p держим качественным для полного экрана
+            return [
                 "-map", "0:v:0", "-map", "0:a:0?",
                 "-vf", f"scale={w}:{h}",
                 "-c:v", "libx264", "-preset", preset, "-profile:v", "high", "-threads", "0",
@@ -822,24 +1176,33 @@ class Transcoder:
                 "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod",
                 "-hls_segment_filename", str(out / "seg_%04d.ts"),
                 str(out / "index.m3u8"),
-            ])
-            if self.db.get_film(film_id) is None:
-                return
-            if not (out / "index.m3u8").exists():
-                raise RuntimeError(f"Не удалось собрать {h}p: {err.decode(errors='replace')[-200:]}")
+            ], w, kbps
+
+        # все качества одним процессом: один декод исходника, одна копия ffmpeg в памяти
+        args = ["-hide_banner", "-loglevel", "error", "-y", "-i", str(src)]
+        done_variants: list[tuple[int, int, int]] = []
+        for h in ladder:
+            extra, w, kbps = variant_args(h)
+            args += extra
+            done_variants.append((h, w, kbps))
+        err = await _run(args)
+        missing = [h for h, _, _ in done_variants if not (build / f"{h}p" / "index.m3u8").exists()]
+        if missing:
+            raise RuntimeError("Не удалось собрать " + "/".join(f"{h}p" for h in missing) +
+                               f": {err.decode(errors='replace')[-200:]}")
+        if self.db.get_film(film_id) is None:  # фильм удалили, пока кодировали
+            shutil.rmtree(build, ignore_errors=True)
+            return
+
+        for h, _, _ in sorted(done_variants):
             dest = folder / f"{h}p"
             shutil.rmtree(dest, ignore_errors=True)
-            shutil.move(str(out), dest)
-            done_variants.append((h, w, kbps))
-            write_master(done_variants)
-            if len(done_variants) == 1:  # первое (самое лёгкое) качество готово — фильм уже можно смотреть
-                self.db.update_film(film_id, status="ready", error=None,
-                                    duration=duration, width=width, height=height)
-
+            shutil.move(str(build / f"{h}p"), dest)
+        write_master(done_variants)          # один плейлист сразу со всеми качествами
         shutil.rmtree(build, ignore_errors=True)
-        if not done_variants:
-            raise RuntimeError("Не удалось собрать ни одного качества")
-        log.info("фильм %s готов полностью: %s", film_id, [v[0] for v in done_variants])
+        self.db.update_film(film_id, status="ready", error=None,
+                            duration=duration, width=width, height=height)
+        log.info("фильм %s готов во всех качествах: %s", film_id, [v[0] for v in done_variants])
 
 
 STORAGE_EVERY = 6 * 3600          # как часто чистить, секунды
@@ -876,6 +1239,19 @@ def clean_storage(db: Database, media_dir: Path) -> dict:
     if any(report.values()):
         db.vacuum()  # после удалений возвращаем место на диске
     return report
+
+
+async def tickets_loop(db: Database, media_dir: Path, every: int = 60) -> None:
+    """Закрытый тикет живёт ещё 10 минут, потом удаляется из базы вместе с перепиской и картинками."""
+    tickets_dir = media_dir.parent / "tickets"
+    while True:
+        await asyncio.sleep(every)
+        try:
+            for ticket_id in await asyncio.to_thread(db.drop_expired_tickets):
+                shutil.rmtree(tickets_dir / str(ticket_id), ignore_errors=True)
+                log.info("закрытый тикет %s удалён из базы", ticket_id)
+        except Exception:
+            log.exception("очистка тикетов не удалась")
 
 
 async def storage_loop(db: Database, media_dir: Path) -> None:
@@ -947,8 +1323,8 @@ def verify_init_data(init_data: str, token: str, max_age: int = 86400) -> dict |
 # Тексты и клавиатуры бота (без эмодзи)
 # ============================================================================
 START_TEXT = (
-    "Здравствуйте, искатель фильмов! Вы попали к нам удачно. "
-    "Здесь множество фильмов и сериалов, в том числе озвученных с помощью ИИ. "
+    "Здравствуйте! Вы попали к нам удачно. "
+    "Здесь много аниме и мультфильмов, в том числе озвученных с помощью ИИ. "
     "Мы стараемся для вас. Если хотите нас поддержать, купите VIP."
 )
 
@@ -1034,10 +1410,21 @@ def build_router(cfg: Config, db: Database, transcoder: Transcoder) -> Router:
         )
         transcoder.enqueue(film_id)
         await message.answer(
-            f"Фильм #{film_id} принят и обрабатывается в качестве 144p, 480p, 720p. "
+            f"Видео #{film_id} принято и обрабатывается сразу в двух качествах: 240p и 720p. "
             "Заполните описание и обложку в Админ-панели.",
             reply_markup=webapp_kb(f"{cfg.webapp_url}#admin/film/{film_id}") if cfg.webapp_url else None,
         )
+
+    @router.my_chat_member()
+    async def on_left_bot(event: ChatMemberUpdated) -> None:
+        """Пользователь заблокировал бота или закрыл его совсем: его тикеты удаляются сразу,
+        чтобы у операторов не висела переписка с тем, кому уже не ответить."""
+        if event.chat.type != "private":
+            return
+        if event.new_chat_member.status in ("kicked", "left"):
+            removed = db.delete_user_tickets(event.from_user.id)
+            if removed:
+                log.info("пользователь %s ушёл из бота, удалено тикетов: %s", event.from_user.id, removed)
 
     @router.pre_checkout_query()
     async def on_pre_checkout(query: PreCheckoutQuery, bot: Bot, role: str) -> None:
@@ -1122,7 +1509,17 @@ class Api:
         self.secret = _secret(cfg)
 
     def user_of(self, request: web.Request) -> dict | None:
-        user = verify_init_data(request.headers.get("X-Init-Data", ""), self.cfg.bot_token)
+        if "_user" in request:      # разбирать init data и ходить в базу дважды на запрос незачем
+            return request["_user"]
+        user = self._parse_user(request)
+        request["_user"] = user
+        return user
+
+    def _parse_user(self, request: web.Request) -> dict | None:
+        # init data приходит в заголовке, но тег <img> заголовки слать не умеет —
+        # картинки тикетов несут подпись в параметре ?init=
+        init = request.headers.get("X-Init-Data", "") or request.query.get("init", "")
+        user = verify_init_data(init, self.cfg.bot_token)
         if not user:
             return None
         uid = int(user["id"])
@@ -1130,7 +1527,11 @@ class Api:
         role = OWNER if uid == self.cfg.owner_id else self.db.get_role(uid)
         row = self.db.get_user(uid) or {}
         return {"id": uid, "name": user.get("first_name") or user.get("username") or "Пользователь",
-                "role": role, "vip_until": row.get("vip_until")}
+                "role": role, "vip_until": row.get("vip_until"),
+                "vip_forever": bool(row.get("vip_forever")) or is_forever(row.get("vip_until")),
+                "stars": int(row.get("stars") or 0), "banned": bool(row.get("banned")),
+                "name_gradient": row.get("name_gradient"),
+                "tour_seen": bool(row.get("tour_seen"))}
 
     def vip_active(self, user: dict | None) -> bool:
         """Есть ли у пользователя доступ к VIP-контенту (включая служебный доступ персонала:
@@ -1139,13 +1540,37 @@ class Api:
             return False
         if at_least(user["role"], ADMIN):
             return True
+        if user.get("vip_forever"):
+            return True
         until = parse_dt(user.get("vip_until"))
         return bool(until and until > utcnow())
+
+    def review_limit(self, user: dict | None) -> int:
+        """Сколько отзывов на один фильм можно оставить: с VIP — два, без VIP — один."""
+        return REVIEW_LIMIT_VIP if self.vip_active(user) else REVIEW_LIMIT
+
+    def person(self, tg_id: int) -> dict:
+        """Автор отзыва: имя, роль, VIP и градиент ника (градиент только у активного VIP)."""
+        row = self.db.get_user(tg_id) or {}
+        role = OWNER if tg_id == self.cfg.owner_id else (row.get("role") or USER)
+        if role not in RANK:
+            role = USER
+        pseudo = {"id": tg_id, "role": role, "vip_until": row.get("vip_until"),
+                  "vip_forever": bool(row.get("vip_forever")) or is_forever(row.get("vip_until"))}
+        vip = self.vip_active(pseudo)
+        return {
+            "name": row.get("first_name") or (f"@{row['username']}" if row.get("username") else "Пользователь"),
+            "vip": vip,
+            "role": role,
+            "gradient": (row.get("name_gradient") if vip else None),
+        }
 
     def locked(self, user: dict | None, film: dict) -> bool:
         return bool(film["is_vip"]) and not self.vip_active(user)
 
-    def film_json(self, user: dict | None, film: dict, detail: bool = False) -> dict:
+    def film_json(self, user: dict | None, film: dict, detail: bool = False,
+                  favs: set[int] | None = None) -> dict:
+        is_series = film["kind"] == "series"
         rating, reviews_n = self.db.rating(film["id"])
         locked = self.locked(user, film)
         # у серии может не быть своей обложки — тогда берём обложку сериала
@@ -1160,6 +1585,9 @@ class Api:
             "releaseDate": film["release_date"],
             "creator": film["creator"],
             "kind": film["kind"],
+            "genre": clean_genre(film.get("genre")),
+            "genreTitle": GENRE_TITLES[clean_genre(film.get("genre"))],
+            "isSeries": is_series,
             "isVip": bool(film["is_vip"]),
             "locked": locked,
             "views": film["views"],
@@ -1173,14 +1601,14 @@ class Api:
             "country": film["country"],
             "isMine": bool(user and film.get("owner_id") == user["id"]),
             "seriesId": film["series_id"],
-            "season": film["season"],
             "episode": film["episode"],
+            "favorite": film["id"] in favs if favs is not None else False,
         }
         if parent:
             data["seriesTitle"] = parent["title"]
         if film["kind"] == "series" and detail:
             data["episodes"] = [
-                {"id": e["id"], "season": e["season"], "episode": e["episode"], "title": e["title"],
+                {"id": e["id"], "episode": e["episode"], "title": e["title"],
                  "status": e["status"], "error": e["error"], "duration": e["duration"],
                  "locked": self.locked(user, e), "hasPoster": bool(e["poster"] or film["poster"] or film["photo_file_id"])}
                 for e in self.db.episodes(film["id"])
@@ -1188,16 +1616,21 @@ class Api:
         if film["kind"] == "link" and not locked:
             data["url"] = film["url"]
         if detail:
-            data["reviews"] = [
-                {"id": r["id"], "userId": r["user_id"], "name": self.db.display_name(r["user_id"]), "rating": r["rating"],
-                 "text": r["text"], "date": r["created_at"],
-                 "canDelete": bool(user and (r["user_id"] == user["id"] or at_least(user["role"], ADMIN)))}
-                for r in self.db.reviews(film["id"])
-            ]
-            fives = [x for x in data["reviews"] if x["rating"] == 5]
-            fives.sort(key=lambda x: hashlib.sha256(f"{film['id']}:{x['id']}".encode()).hexdigest())
-            data["featured"] = fives[:3]
+            # отзывы приходят уже отсортированными: сначала VIP, потом обычные
+            data["reviews"] = [self.review_json(user, r) for r in self.db.reviews(film["id"], self.cfg.owner_id)]
+        data["reviewLimit"] = self.review_limit(user)
+        data["canReview"] = bool(user) and not locked
         return data
+
+    def review_json(self, user: dict | None, r: dict) -> dict:
+        """Отзыв с данными автора: градиент ника и золотая приписка VIP."""
+        who = self.person(r["user_id"])
+        return {
+            "id": r["id"], "userId": r["user_id"], "name": who["name"], "rating": r["rating"],
+            "text": r["text"], "date": r["created_at"],
+            "vip": who["vip"], "gradient": who["gradient"],
+            "canDelete": bool(user and (r["user_id"] == user["id"] or at_least(user["role"], ADMIN))),
+        }
 
     def can_manage(self, user: dict, film: dict) -> bool:
         if at_least(user["role"], ADMIN):
@@ -1270,9 +1703,6 @@ async def _subtitle_upload(api: "Api", request: web.Request, film: dict, folder:
             path.unlink(missing_ok=True)
 
 
-IMAGE_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-
-
 def _poster_ext(filename: str) -> str:
     ext = Path(filename).suffix.lower()
     return ext if ext in (".jpg", ".jpeg", ".png", ".webp") else ".jpg"
@@ -1280,10 +1710,24 @@ def _poster_ext(filename: str) -> str:
 
 def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
               transcoder: Transcoder, bot_username: str | None) -> web.Application:
-    app = web.Application(client_max_size=UPLOAD_LIMIT + 16 * 1024 * 1024)
     api = Api(cfg, db, bot, transcoder)
     media_root = cfg.media_dir
     uploads = ChunkUploads(media_root / "tmp")
+    tickets_dir = cfg.media_dir.parent / "tickets"      # картинки из тикетов
+
+    # Забаненному пользователю сайт закрыт полностью: открыты только он сам и поддержка,
+    # чтобы он мог написать апелляцию. Бан хранится в базе, перезаход в бота его не снимает.
+    ban_free = re.compile(r"^/api/(me|config|avatar/|tickets)")
+
+    @web.middleware
+    async def ban_guard(request: web.Request, handler):
+        if request.path.startswith("/api/") and not ban_free.match(request.path):
+            user = api.user_of(request)
+            if user and user.get("banned"):
+                return _err("banned", 403)
+        return await handler(request)
+
+    app = web.Application(client_max_size=UPLOAD_LIMIT + 16 * 1024 * 1024, middlewares=[ban_guard])
 
     def staff_user(request: web.Request, minimum: str) -> tuple[dict | None, web.Response | None]:
         user = api.user_of(request)
@@ -1309,6 +1753,10 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             "background": cfg.background_url,
             "prices": {"vipMonth": cfg.vip_month, "vipYear": cfg.vip_year},
             "donate": list(DONATE_OPTIONS),
+            # жанры: подписи для карточек каталога и страницы фильма
+            "genres": [{"id": g, "title": GENRE_TITLES[g]} for g in GENRES],
+            "reviewLimit": REVIEW_LIMIT,
+            "reviewLimitVip": REVIEW_LIMIT_VIP,
         })
 
     async def me(request: web.Request) -> web.Response:
@@ -1319,21 +1767,72 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             "guest": False, "id": user["id"], "name": user["name"], "role": user["role"],
             "roleTitle": ROLE_TITLES[user["role"]], "vipUntil": user["vip_until"],
             "vipActive": api.vip_active(user),
+            "vipForever": user["vip_forever"],
+            "stars": user["stars"],
+            "nameGradient": user["name_gradient"] if api.vip_active(user) else None,
+            "reviewLimit": api.review_limit(user),
+            "banned": bool(user.get("banned")),
             "canUpload": at_least(user["role"], EDITOR),
             "canManage": at_least(user["role"], ADMIN),
             "isOwner": user["role"] == OWNER,
+            "tourSeen": bool(user.get("tour_seen")),
         })
 
     async def films(request: web.Request) -> web.Response:
         user = api.user_of(request)
-        return _json([api.film_json(user, f) for f in db.list_films()])
+        favs = set(db.favorites(user["id"])) if user else set()
+        return _json([api.film_json(user, f, favs=favs) for f in db.list_films()])
+
+    async def my_style(request: web.Request) -> web.Response:
+        """Оформление ника: gradient разрешён только активному VIP."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if not api.vip_active(user):
+            return _err("vip_required", 403)
+        ok, gradient = clean_gradient(body.get("gradient"))
+        if not ok:
+            return _err("bad_gradient", 400)
+        db.set_name_gradient(user["id"], gradient)
+        return _json({"ok": True, "nameGradient": gradient})
+
+    async def pay_stars(request: web.Request) -> web.Response:
+        """Покупка VIP за звёзды с внутреннего баланса (баланс пополняет владелец/админ)."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        try:
+            body = await request.json()
+            kind = str(body.get("kind", ""))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        price = {"vip_month": cfg.vip_month, "vip_year": cfg.vip_year}.get(kind)
+        if not price:
+            return _err("bad_request", 400)
+        if user["vip_forever"]:   # бессрочный VIP уже есть, продлевать нечего
+            return _err("already_forever", 400)
+        if not db.spend_stars(user["id"], price):
+            return _err("not_enough_stars", 400)
+        if kind == "vip_month":
+            db.grant_vip(user["id"], VIP_MONTH_DAYS)
+        else:
+            db.grant_vip(user["id"], VIP_YEAR_DAYS)
+        row = db.get_user(user["id"]) or {}
+        return _json({"ok": True, "stars": int(row.get("stars") or 0),
+                      "vipUntil": row.get("vip_until"),
+                      "vipForever": bool(row.get("vip_forever")) or is_forever(row.get("vip_until"))})
 
     async def film_detail(request: web.Request) -> web.Response:
         film = _film_or_none(request)
         if not film:
             return _err("not_found", 404)
         user = api.user_of(request)
-        return _json(api.film_json(user, film, detail=True))
+        favs = set(db.favorites(user["id"])) if user else set()
+        return _json(api.film_json(user, film, detail=True, favs=favs))
 
     def _film_or_none(request: web.Request) -> dict | None:
         try:
@@ -1411,6 +1910,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         return web.FileResponse(target, headers={"Content-Type": ctype, "Cache-Control": "private, max-age=3600"})
 
     async def add_review(request: web.Request) -> web.Response:
+        """Отзыв на фильм, серию или сериал. Лимит: один отзыв, с VIP — два."""
         user = api.user_of(request)
         if not user:
             return _err("auth", 401)
@@ -1427,8 +1927,23 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         text = str(body.get("text", "")).strip()[:1000]
         if not 1 <= rating <= 5:
             return _err("bad_rating", 400)
-        db.upsert_review(film["id"], user["id"], rating, text)
-        return _json({"ok": True})
+
+        edit_id = body.get("id")
+        if edit_id is not None:  # правка уже оставленного отзыва
+            try:
+                review = db.get_review(int(edit_id))
+            except (TypeError, ValueError):
+                return _err("bad_request", 400)
+            if not review or review["user_id"] != user["id"]:
+                return _err("forbidden", 403)
+            db.update_review(review["id"], rating, text)
+            return _json({"ok": True, "id": review["id"]})
+
+        limit = api.review_limit(user)
+        if db.count_user_reviews(film["id"], user["id"]) >= limit:
+            return _err("review_limit", 400)
+        review_id = db.add_review(film["id"], user["id"], rating, text)
+        return _json({"ok": True, "id": review_id, "reviewLimit": limit})
 
     async def delete_review(request: web.Request) -> web.Response:
         user = api.user_of(request)
@@ -1515,13 +2030,18 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         start = index * CHUNK_SIZE
         expected = min(CHUNK_SIZE, item["size"] - start)
         got = 0
-        with open(item["path"], "r+b") as fh:
-            fh.seek(start)
-            async for part in request.content.iter_chunked(1 << 20):
-                got += len(part)
-                if got > expected:
-                    return _err("bad_chunk", 400)
-                fh.write(part)
+        # обрыв соединения (слабая сеть, прокси закрыл долгий запрос) — не ошибка сервера:
+        # часть просто не засчитывается, и клиент повторяет её целиком
+        try:
+            with open(item["path"], "r+b") as fh:
+                fh.seek(start)
+                async for part in request.content.iter_chunked(1 << 20):
+                    got += len(part)
+                    if got > expected:
+                        return _err("bad_chunk", 400)
+                    fh.write(part)
+        except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError):
+            return _err("interrupted", 499)
         if got != expected:
             return _err("bad_chunk", 400)
         item["received"].add(index)
@@ -1538,6 +2058,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             kind = fields.get("kind", "video")
             if not title:
                 return _err("title_required", 400)
+            genre = clean_genre(fields.get("genre"), DEFAULT_GENRE)
             if kind == "link" and not URL_RE.match(fields.get("url", "")):
                 return _err("bad_url", 400)
             upload_item = None
@@ -1550,7 +2071,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             if kind != "video":
                 return _err("bad_kind", 400)
             series = None
-            season = episode = 0
+            episode = 0
             series_raw = fields.get("seriesId", "")
             if series_raw:
                 series = _managed(user, int(series_raw)) if series_raw.isdigit() else None
@@ -1558,14 +2079,14 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                     return _err("not_found", 404)
                 if kind != "video":
                     return _err("bad_kind", 400)
+                # сезонов нет: серии — один плоский список с номерами
                 try:
-                    season = int(fields.get("season", "1"))
                     episode = int(fields.get("episode", "1"))
                 except ValueError:
                     return _err("bad_request", 400)
-                if not (1 <= season <= 99 and 1 <= episode <= 999):
+                if not (1 <= episode <= 999):
                     return _err("bad_request", 400)
-                if db.episode_exists(series["id"], season, episode):
+                if db.episode_exists(series["id"], episode):
                     return _err("episode_exists", 400)
             film_id = db.create_film(
                 title=title,
@@ -1579,23 +2100,32 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
                 is_vip=1 if fields.get("isVip") in ("1", "true", "on") else 0,
                 status="ready" if kind == "link" else "processing",
                 series_id=series["id"] if series else None,
-                season=season,
+                season=1,
                 episode=episode,
+                genre=genre,
             )
-            if series:  # серия наследует VIP, автора, страну и дату сериала
+            if series:  # серия наследует VIP, автора, страну и дату сериала; жанр у серии свой
                 db.update_film(film_id, is_vip=series["is_vip"], creator=series["creator"],
                                country=series["country"], release_date=series["release_date"])
             folder = media_root / str(film_id)
-            folder.mkdir(parents=True, exist_ok=True)
-            if upload_item:
-                shutil.move(str(upload_item["path"]), folder / "source.mp4")
-                uploads.items.pop(fields["uploadId"], None)
-            if "poster" in files:
-                dest = folder / f"poster{_poster_ext(files['poster'][1])}"
-                shutil.move(str(files["poster"][0]), dest)
-                db.update_film(film_id, poster=str(dest))
-            if kind == "video":
-                transcoder.enqueue(film_id)
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                if upload_item:
+                    shutil.move(str(upload_item["path"]), folder / "source.mp4")
+                    uploads.items.pop(fields["uploadId"], None)
+                if "poster" in files:
+                    dest = folder / f"poster{_poster_ext(files['poster'][1])}"
+                    shutil.move(str(files["poster"][0]), dest)
+                    db.update_film(film_id, poster=str(dest))
+                if kind == "video":
+                    transcoder.enqueue(film_id)
+            except Exception:
+                # запись без видео оставаться не должна: фильм убираем, parts-загрузку
+                # не трогаем — повторное нажатие «Добавить» досоздаст фильм из тех же частей
+                log.exception("создание фильма %s оборвалось", film_id)
+                db.delete_film(film_id)
+                shutil.rmtree(folder, ignore_errors=True)
+                return _err("server_error", 500)
             return _json(api.film_json(user, db.get_film(film_id)), 201)
         finally:
             for path, _ in files.values():
@@ -1627,6 +2157,8 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             fields["creator"] = str(body["creator"])[:120]
         if "country" in body:
             fields["country"] = str(body["country"])[:80]
+        if "genre" in body:
+            fields["genre"] = clean_genre(body.get("genre"), clean_genre(film.get("genre"), DEFAULT_GENRE))
         if "url" in body and film["kind"] == "link":
             if not URL_RE.match(str(body["url"])):
                 return _err("bad_url", 400)
@@ -1637,6 +2169,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             fields["is_active"] = 1 if body["isActive"] else 0
         db.update_film(film["id"], **fields)
         if film["kind"] == "series" and "is_vip" in fields:
+            # VIP-флаг сериала переходит на все его серии; жанр у каждой серии свой
             db.conn.execute("UPDATE films SET is_vip = ? WHERE series_id = ?", (fields["is_vip"], film["id"]))
         return _json(api.film_json(user, db.get_film(film["id"])))
 
@@ -1714,6 +2247,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
             creator=str(body.get("creator", ""))[:120],
             country=str(body.get("country", ""))[:80],
             is_vip=1 if body.get("isVip") else 0,
+            genre=clean_genre(body.get("genre"), DEFAULT_GENRE),
         )
         return _json(api.film_json(user, db.get_film(film_id), detail=True), 201)
 
@@ -1735,7 +2269,11 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         return _json([{
             "id": r["tg_id"], "name": r["first_name"] or r["username"] or str(r["tg_id"]),
             "role": r["role"] if r["tg_id"] != cfg.owner_id else OWNER,
-            "vipUntil": r["vip_until"], "vipActive": bool((parse_dt(r["vip_until"]) or datetime.min.replace(tzinfo=timezone.utc)) > utcnow()),
+            "vipUntil": r["vip_until"],
+            "vipForever": bool(r["vip_forever"]) or is_forever(r["vip_until"]),
+            "vipActive": bool((parse_dt(r["vip_until"]) or datetime.min.replace(tzinfo=timezone.utc)) > utcnow()),
+            "stars": int(r["stars"] or 0),
+            "banned": bool(r["banned"]),
         } for r in rows])
 
     async def admin_role(request: web.Request) -> web.Response:
@@ -1748,7 +2286,7 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         except (TypeError, ValueError):
             return _err("bad_id", 400)
         new_role = str(body.get("role", ""))
-        if new_role not in (USER, EDITOR, ADMIN):
+        if new_role not in (USER, OPERATOR, EDITOR, ADMIN):
             return _err("bad_role", 400)
         if target_id == cfg.owner_id:
             return _err("owner", 400)
@@ -1763,24 +2301,65 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         return _json({"ok": True})
 
     async def admin_vip(request: web.Request) -> web.Response:
+        """Выдача VIP: на 1 день, на срок в днях, навсегда (∞) и полный отзыв."""
         user, bad = staff_user(request, ADMIN)
         if bad:
             return bad
-        body = await request.json()
         try:
+            body = await request.json()
             target_id = int(body.get("id"))
-            days = int(body.get("days"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        forever = bool(body.get("forever"))
+        revoke = bool(body.get("revoke"))
+        try:
+            days = int(body.get("days") or 0)
         except (TypeError, ValueError):
             return _err("bad_request", 400)
-        if days == 0 or abs(days) > 3650:
-            return _err("bad_days", 400)
-        until = db.grant_vip(target_id, days)
+
+        if revoke:
+            db.revoke_vip(target_id)
+            text = "VIP отозван."
+            until_raw: str | None = None
+        elif forever or days == -1:
+            db.grant_vip_forever(target_id)
+            text = "Вам выдан VIP навсегда."
+            until_raw = VIP_FOREVER
+        else:
+            if days <= 0 or days > 3650:
+                return _err("bad_days", 400)
+            until = db.grant_vip(target_id, days)
+            text = f"Вам выдан VIP на {days} дн."
+            until_raw = fmt_dt(until)
         try:
-            text = (f"Вам выдан VIP на {days} дн." if days > 0 else "VIP отозван.")
             await bot.send_message(target_id, text)
         except TelegramAPIError:
             pass
-        return _json({"ok": True, "vipUntil": fmt_dt(until)})
+        row = db.get_user(target_id) or {}
+        return _json({"ok": True, "vipUntil": row.get("vip_until"),
+                      "vipForever": bool(row.get("vip_forever")) or is_forever(row.get("vip_until"))})
+
+    async def admin_stars(request: web.Request) -> web.Response:
+        """Выдача звёзд на внутренний баланс себе или любому пользователю по ID.
+        Звёздами с баланса можно купить VIP в магазине без списания Telegram Stars."""
+        user, bad = staff_user(request, ADMIN)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+            target_id = int(body.get("id"))
+            amount = int(body.get("amount"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if amount == 0 or abs(amount) > 1_000_000:
+            return _err("bad_amount", 400)
+        balance = db.add_stars(target_id, amount)   # минус списывает, баланс не уходит ниже нуля
+        if amount > 0 and target_id != user["id"]:
+            try:
+                await bot.send_message(target_id, f"Вам начислено {amount} звёзд. Баланс: {balance} ★.")
+            except TelegramAPIError:
+                pass
+        return _json({"ok": True, "id": target_id, "stars": balance})
 
     async def admin_sales(request: web.Request) -> web.Response:
         user, bad = staff_user(request, OWNER)
@@ -1848,16 +2427,25 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         return _json({"ok": True})
 
     async def complete_view(request: web.Request) -> web.Response:
-        """Засчитывает просмотр фильма только когда зритель досмотрел ролик до конца
-        (вызывается с фронтенда по событию 'ended' видео), а не при каждом открытии плеера."""
+        """Засчитывает просмотр, когда зритель посмотрел 5 минут (а не досмотрел до конца:
+        в конце титры, их смотрят не все). Фронтенд шлёт позицию, решает сервер.
+        Один пользователь даёт фильму один просмотр."""
         user = api.user_of(request)
         if not user:
             return _err("auth", 401)
         film = _film_or_none(request)
         if not film:
             return _err("not_found", 404)
-        db.add_view(film["id"])
-        return _json({"ok": True})
+        try:
+            body = await request.json()
+            pos = float(body.get("position", 0))
+            dur = float(body.get("duration", 0)) or float(film["duration"] or 0)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if not (0 <= pos < 1e7 and 0 <= dur < 1e7):
+            return _err("bad_request", 400)
+        counted = db.register_view(user["id"], film["id"], pos, dur)
+        return _json({"ok": True, "counted": counted, "views": db.get_film(film["id"])["views"]})
 
     async def history(request: web.Request) -> web.Response:
         user = api.user_of(request)
@@ -1962,6 +2550,312 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         db.delete_ad(row["id"])
         return _json({"ok": True})
 
+    # ---- избранное ----
+    async def favorites_list(request: web.Request) -> web.Response:
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ids = db.favorites(user["id"])
+        out = []
+        for film_id in ids:
+            film = db.get_film(film_id)
+            if film and film["is_active"]:
+                out.append(api.film_json(user, film, favs=set(ids)))
+        return _json(out)
+
+    async def favorite_toggle(request: web.Request) -> web.Response:
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        film = _film_or_none(request)
+        if not film:
+            return _err("not_found", 404)
+        added = db.toggle_favorite(user["id"], film["id"])
+        return _json({"ok": True, "favorite": added})
+
+    # ---- тикеты поддержки ----
+    def can_see_ticket(user: dict, ticket: dict) -> bool:
+        """Пользователь видит свои тикеты, оператор — те, что ждут у операторов, редактор —
+        переданные админам (зелёные на контент), админ и владелец — все."""
+        role = user["role"]
+        if at_least(role, ADMIN):
+            return True
+        if role == EDITOR:
+            return ticket["assignee"] == TICKET_STAFF
+        if role == OPERATOR:
+            return ticket["assignee"] == TICKET_OPERATOR
+        return ticket["user_id"] == user["id"]
+
+    def visible_tickets(user: dict) -> list[dict]:
+        role = user["role"]
+        if at_least(role, ADMIN):
+            rows = db.tickets()
+        elif role == EDITOR:
+            rows = db.tickets(assignee=TICKET_STAFF)
+        elif role == OPERATOR:
+            rows = db.tickets(assignee=TICKET_OPERATOR)
+        else:
+            rows = db.tickets(user_id=user["id"])
+        if at_least(role, OPERATOR):  # у персонала бывают и свои личные тикеты
+            seen = {t["id"] for t in rows}
+            rows = rows + [t for t in db.tickets(user_id=user["id"]) if t["id"] not in seen]
+        return rows
+
+    def ticket_json(user: dict, t: dict, queue: dict[int, int], with_messages: bool = True) -> dict:
+        data = {
+            "id": t["id"], "kind": t["kind"], "kindTitle": TICKET_TITLES[t["kind"]],
+            "text": t["text"], "createdAt": t["created_at"], "assignee": t["assignee"],
+            "authorId": t["user_id"], "author": db.display_name(t["user_id"]),
+            "queue": queue.get(t["id"]),      # номер в очереди; None — тикет уже передан админам
+            "closed": t.get("status") == TICKET_CLOSED,
+            "mine": t["user_id"] == user["id"],
+            # кто что может сделать с тикетом: решает сервер, а не роли на клиенте
+            "canClose": t["user_id"] == user["id"] or at_least(user["role"], OPERATOR),
+            "canDelete": at_least(user["role"], OPERATOR),
+            "canTransfer": user["role"] == OPERATOR and t["assignee"] == TICKET_OPERATOR,
+        }
+        # переписка нужна только в чате: список тикетов без неё в десятки раз легче
+        if with_messages:
+            data["messages"] = [{
+                "id": m["id"], "text": m["text"], "date": m["created_at"],
+                "image": f"/api/tickets/{t['id']}/images/{m['image']}" if m.get("image") else None,
+                "mine": m["author_id"] == user["id"], "role": m["author_role"],
+                "roleTitle": ROLE_TITLES.get(m["author_role"], ROLE_TITLES[OPERATOR]),
+            } for m in db.ticket_messages(t["id"])]
+        return data
+
+    def ticket_or_error(request: web.Request, user: dict) -> tuple[dict | None, web.Response | None]:
+        try:
+            tid = int(request.match_info["id"])
+        except (KeyError, ValueError):
+            return None, _err("bad_id", 400)
+        ticket = db.get_ticket(tid)
+        if not ticket:
+            return None, _err("not_found", 404)
+        if not can_see_ticket(user, ticket):
+            return None, _err("forbidden", 403)
+        return ticket, None
+
+    async def tickets_list(request: web.Request) -> web.Response:
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        queue = db.ticket_queue()
+        return _json({
+            "kinds": [{"id": k, "title": TICKET_TITLES[k]} for k in TICKET_KINDS],
+            "answer": TICKET_ANSWER,
+            "tickets": [ticket_json(user, t, queue, with_messages=False)
+                        for t in visible_tickets(user)],
+        })
+
+    async def ticket_one(request: web.Request) -> web.Response:
+        """Один тикет для чата. Раньше чат открывался списком всех тикетов вместе с
+        перепиской каждого — отсюда и долгое открытие."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        return _json(ticket_json(user, ticket, db.ticket_queue()))
+
+    async def ticket_create(request: web.Request) -> web.Response:
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        kind = str(body.get("kind", "")).strip().lower()
+        if kind not in TICKET_KINDS:
+            return _err("bad_kind", 400)
+        text = str(body.get("text", "")).strip()[:2000]
+        if not text:
+            return _err("empty", 400)
+        ticket_id = db.add_ticket(user["id"], kind, text)
+        return _json({"ok": True, "id": ticket_id, "answer": TICKET_ANSWER}, 201)
+
+    async def ticket_reply(request: web.Request) -> web.Response:
+        """Сообщение в тикет. Персонал отвечает от имени Оператора."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if ticket.get("status") == TICKET_CLOSED:
+            return _err("ticket_closed", 400)
+        text = str(body.get("text", "")).strip()[:2000]
+        image = str(body.get("image", "") or "").strip()
+        if not text and not image:
+            return _err("empty", 400)
+        if image and not (tickets_dir / str(ticket["id"]) / image).is_file():
+            return _err("bad_image", 400)
+        message_id = db.add_ticket_message(ticket["id"], user["id"], user["role"], text, image or None)
+        row = db.get_ticket_message(message_id)
+        # ответ персонала уходит пользователю в Telegram; если он заблокировал бота —
+        # тикеты удаляются сразу (держать переписку с тем, кого нет в боте, незачем)
+        if user["id"] != ticket["user_id"]:
+            try:
+                await bot.send_message(ticket["user_id"],
+                                       f"Ответ на ваш тикет #{ticket['id']}:\n{text[:300]}")
+            except TelegramForbiddenError:
+                db.delete_user_tickets(ticket["user_id"])
+                return _err("user_left", 410)
+            except TelegramAPIError:
+                pass
+        return _json({"ok": True, "message": {
+            "id": row["id"], "text": row["text"], "date": row["created_at"],
+            "image": f"/api/tickets/{ticket['id']}/images/{row['image']}" if row["image"] else None,
+            "mine": True, "role": user["role"],
+            "roleTitle": ROLE_TITLES.get(user["role"], ROLE_TITLES[OPERATOR]),
+        }})
+
+    async def ticket_image(request: web.Request) -> web.Response:
+        """Картинка к сообщению тикета: приходит в base64 внутри обычного JSON-запроса.
+        Тип проверяется по содержимому, размер — до 10 МБ."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        if ticket.get("status") == TICKET_CLOSED:
+            return _err("ticket_closed", 400)
+        # base64 примерно в полтора раза больше самой картинки: больше 20 МБ в запросе быть не должно
+        if request.content_length and request.content_length > TICKET_IMAGE_MAX * 2:
+            return _err("too_large", 413)
+        try:
+            body = await request.json()
+        except (ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        raw = str(body.get("image", "") or "").strip()
+        if not raw:
+            return _err("bad_image", 400)
+        if raw.startswith("data:"):                      # data:image/png;base64,....
+            head, _, raw = raw.partition(",")
+            if not head[5:].split(";")[0].strip().lower().startswith("image/"):
+                return _err("bad_image", 400)
+        try:
+            data = base64.b64decode(raw, validate=True)
+        except (ValueError, TypeError):
+            return _err("bad_image", 400)
+        ext = sniff_image(data)
+        if ext is None:
+            return _err("bad_image", 400)
+        if len(data) > TICKET_IMAGE_MAX:
+            return _err("too_large", 413)
+        folder = tickets_dir / str(ticket["id"])
+        folder.mkdir(parents=True, exist_ok=True)
+        name = f"{uuid.uuid4().hex}{ext}"
+        with open(folder / name, "wb") as fh:
+            fh.write(data)
+        return _json({"ok": True, "name": name, "url": f"/api/tickets/{ticket['id']}/images/{name}"})
+
+    async def ticket_image_get(request: web.Request) -> web.StreamResponse:
+        user = api.user_of(request)
+        if not user:
+            return web.Response(status=401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        folder = (tickets_dir / str(ticket["id"])).resolve()
+        target = (folder / request.match_info["name"]).resolve()
+        if folder not in target.parents or not target.is_file():
+            return web.Response(status=404)
+        return web.FileResponse(target, headers={"Cache-Control": "private, max-age=3600"})
+
+    async def ticket_close(request: web.Request) -> web.Response:
+        """Закрыть тикет: он закрывается у обеих сторон и через 10 минут удаляется из базы."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        if ticket["user_id"] != user["id"] and not at_least(user["role"], OPERATOR):
+            return _err("forbidden", 403)
+        db.close_ticket(ticket["id"])
+        return _json({"ok": True, "id": ticket["id"], "ttl": TICKET_TTL})
+
+    async def ticket_transfer(request: web.Request) -> web.Response:
+        """Оператор передаёт тикет админам и владельцу; админ или владелец возвращает операторам."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+            to = str(body.get("to", "")).strip()
+        except (ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if to not in (TICKET_OPERATOR, TICKET_STAFF):
+            return _err("bad_request", 400)
+        if to == TICKET_STAFF and user["role"] != OPERATOR:
+            return _err("forbidden", 403)      # передаёт админам только оператор
+        if to == TICKET_OPERATOR and not at_least(user["role"], ADMIN):
+            return _err("forbidden", 403)
+        db.set_ticket_assignee(ticket["id"], to)
+        if to == TICKET_STAFF:
+            for uid in set(db.staff_ids(ADMIN)) | {cfg.owner_id}:
+                try:
+                    await bot.send_message(
+                        uid, f"Тикет #{ticket['id']} ({TICKET_TITLES[ticket['kind']]}) передан вам.\n"
+                             f"От: {db.display_name(ticket['user_id'])} ({ticket['user_id']})\n"
+                             f"{ticket['text'][:300]}")
+                except TelegramAPIError:
+                    pass
+        return _json({"ok": True, "assignee": to})
+
+    async def ticket_delete(request: web.Request) -> web.Response:
+        """«Удалить» есть только у оператора, редактора, админа и владельца: тикет стирается
+        из базы сразу, вместе с перепиской и картинками. Автор тикета удалять не может —
+        у него есть «Закрыть», и такой тикет удалится сам через 10 минут."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        ticket, bad = ticket_or_error(request, user)
+        if bad:
+            return bad
+        if not at_least(user["role"], OPERATOR):
+            return _err("forbidden", 403)
+        db.delete_ticket(ticket["id"])
+        shutil.rmtree(tickets_dir / str(ticket["id"]), ignore_errors=True)   # картинки тоже удаляем
+        return _json({"ok": True, "id": ticket["id"], "immediate": True})
+
+    async def tour_seen(request: web.Request) -> web.Response:
+        """Подсказки по кнопкам показаны один раз и больше не показываются никогда."""
+        user = api.user_of(request)
+        if not user:
+            return _err("auth", 401)
+        db.set_tour_seen(user["id"])
+        return _json({"ok": True})
+
+    async def admin_ban(request: web.Request) -> web.Response:
+        """Бан: сохраняется в базе, после перезахода в бота не снимается.
+        Забаненному закрыт весь сайт, кроме поддержки — там он пишет апелляцию."""
+        user, bad = staff_user(request, ADMIN)
+        if bad:
+            return bad
+        try:
+            body = await request.json()
+            target_id = int(body.get("id"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return _err("bad_request", 400)
+        if target_id == cfg.owner_id:
+            return _err("owner", 400)
+        banned = bool(body.get("banned", True))
+        db.set_banned(target_id, banned)
+        row = db.get_user(target_id) or {}
+        return _json({"ok": True, "id": target_id, "banned": bool(row.get("banned"))})
+
     routes = [
         ("GET", "/health", health),
         ("GET", "/", page),
@@ -1984,7 +2878,9 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("POST", "/api/admin/ads", admin_ad_add),
         ("POST", "/api/admin/ads/{id}/delete", admin_ad_delete),
         ("POST", "/api/reviews/{id}/delete", delete_review),
+        ("POST", "/api/me/style", my_style),
         ("POST", "/api/pay/invoice", invoice),
+        ("POST", "/api/pay/stars", pay_stars),
         ("GET", "/api/admin/films", admin_films),
         ("POST", "/api/admin/films", admin_create),
         ("POST", "/api/admin/uploads", upload_init),
@@ -1999,9 +2895,23 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         ("GET", "/api/admin/users", admin_users),
         ("POST", "/api/admin/role", admin_role),
         ("POST", "/api/admin/vip", admin_vip),
+        ("POST", "/api/admin/stars", admin_stars),
         ("GET", "/api/admin/sales", admin_sales),
         ("POST", "/api/admin/sales/{id}/refund", admin_refund),
         ("GET", "/api/admin/stats", admin_stats),
+        ("GET", "/api/tickets", tickets_list),
+        ("GET", "/api/tickets/{id}", ticket_one),
+        ("POST", "/api/tickets", ticket_create),
+        ("POST", "/api/tickets/{id}/messages", ticket_reply),
+        ("POST", "/api/tickets/{id}/transfer", ticket_transfer),
+        ("POST", "/api/tickets/{id}/delete", ticket_delete),
+        ("POST", "/api/tickets/{id}/close", ticket_close),
+        ("POST", "/api/tickets/{id}/images", ticket_image),
+        ("POST", "/api/tour", tour_seen),
+        ("GET", "/api/tickets/{id}/images/{name}", ticket_image_get),
+        ("GET", "/api/favorites", favorites_list),
+        ("POST", "/api/films/{film_id}/favorite", favorite_toggle),
+        ("POST", "/api/admin/ban", admin_ban),
     ]
     for method, path, handler in routes:
         app.router.add_route(method, path, handler)
@@ -2035,21 +2945,26 @@ async def main() -> None:
     me = await bot.get_me()
     log.info("бот @%s, владелец: %s, режим: %s, БД: %s", me.username, cfg.owner_id, cfg.mode, cfg.db_path)
 
-    # видео, которые не обработаны (после обновления или сбоя), ставим в очередь заново
+    # видео, которые не обработаны (после обновления или сбоя), ставим в очередь заново;
+    # оставшиеся без исходника сразу помечаем failed — иначе каждый перезапуск спамит ошибками
+    lost = mark_lost_sources(db, cfg.media_dir)
+    if lost:
+        log.warning("нет исходного видео, помечены как failed: %s", lost)
     for film in db.list_video_films():
         folder = cfg.media_dir / str(film["id"])
         if film["status"] != "ready" or not (folder / "master.m3u8").exists():
             if film["status"] != "failed" or film["video_file_id"]:
                 transcoder.enqueue(film["id"])
-        elif not hls_ready(folder, film["height"]) and (folder / "source.mp4").exists():
+        elif not hls_ready(folder) and (folder / "source.mp4").exists():
             # старый набор качеств: пересобираем из исходника, старое видео играет до замены
             transcoder.queue.put_nowait(film["id"])
     transcoder.start()
     storage_task = asyncio.create_task(storage_loop(db, cfg.media_dir))
+    tickets_task = asyncio.create_task(tickets_loop(db, cfg.media_dir))
 
     await bot.set_my_commands([BotCommand(command="start", description="Открыть")])
     if cfg.webapp_url:
-        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Фильмы", web_app=WebAppInfo(url=cfg.webapp_url)))
+        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Аниме", web_app=WebAppInfo(url=cfg.webapp_url)))
 
     runner = web.AppRunner(build_web(cfg, db, bot, dp, transcoder, me.username))
     await runner.setup()
@@ -2078,6 +2993,7 @@ async def main() -> None:
         log.info("останавливаюсь")
         await transcoder.stop()
         storage_task.cancel()
+        tickets_task.cancel()
         if poller:
             poller.cancel()
         await runner.cleanup()

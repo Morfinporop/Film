@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Фильмы</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/static/hls.min.js"></script>
+<title>Аниме и мультфильмы</title>
+<!-- внешние скрипты грузятся с defer и не блокируют страницу: на ПК отдача telegram.org
+     может подвисать, а синхронное подключение держало бы всё приложение на белом экране -->
+<script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+<script defer src="/static/hls.min.js"></script>
 <style>
   :root {
     --text: #f4f4f5;
@@ -41,7 +43,31 @@
   h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
   .section { margin-top: 36px; }
-  .glass { background: var(--field); border: 1px solid var(--line); border-radius: 22px; padding: 20px; }
+  /* Liquid Glass: полупрозрачное стекло — блюр, подсветка верхней кромки, мягкая тень */
+  .glass {
+    position: relative;
+    background: linear-gradient(165deg, rgba(255,255,255,.13), rgba(255,255,255,.045) 46%, rgba(255,255,255,.02));
+    border: 1px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.3);
+    border-radius: 26px; padding: 20px;
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    backdrop-filter: blur(30px) saturate(180%);
+    box-shadow: 0 20px 50px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.24);
+  }
+  @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+    /* без поддержки блюра стекло заменяем плотным фоном, чтобы текст оставался читаемым */
+    .glass, .nav { background: rgba(18,18,22,.92); }
+    .btn.ghost { background: rgba(30,30,36,.9); }
+  }
+
+  /* ---- админка: структура — карточки с заголовками, поля парами, блоки разделены ---- */
+  .adm-card { margin-bottom: 16px; padding: 18px 20px; }
+  .adm-card > h2 { margin: 0 0 14px; font-size: 17px; }
+  .adm-card > h2 small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .adm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  @media (max-width: 560px) { .adm-grid { grid-template-columns: 1fr; } }
+  .adm-sec { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .adm-sec:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .adm-sec > h3 { margin: 0 0 10px; font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 
   /* ---- нижняя навигация ---- */
   .nav {
@@ -50,10 +76,10 @@
     width: min(calc(100% - 48px), 380px);
     display: flex; justify-content: space-between; align-items: center; gap: 6px;
     padding: 8px; border-radius: 999px; z-index: 10;
-    background: var(--field);
-    border: 1px solid var(--line);
-    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
-    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+    border: 1px solid rgba(255,255,255,.18); border-top-color: rgba(255,255,255,.32);
+    backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+    box-shadow: 0 14px 38px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.25);
   }
   .nav button {
     width: 52px; height: 52px; border-radius: 50%; border: 0;
@@ -61,7 +87,18 @@
     display: grid; place-items: center; transition: background .2s, color .2s;
   }
   .nav button.on { background: #fff; color: #000; }
-  .nav svg { width: 22px; height: 22px; }
+  .nav svg { width: 22px; height: 22px; transition: transform .25s cubic-bezier(.2,.9,.3,1.4); }
+  .nav button:hover svg { transform: translateY(-3px) scale(1.12); }
+  /* нажатие: иконка заметно подпрыгивает вверх и возвращается */
+  .nav button:active svg { animation: navHop .55s cubic-bezier(.3,1.5,.4,1); }
+  @keyframes navHop {
+    0%   { transform: translateY(0) scale(1); }
+    35%  { transform: translateY(-9px) scale(1.22) rotate(-4deg); }
+    70%  { transform: translateY(2px) scale(.94) rotate(2deg); }
+    100% { transform: translateY(0) scale(1); }
+  }
+  .nav button.on svg { animation: navGlow 2.4s ease-in-out infinite; }
+  @keyframes navGlow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
 
   /* ---- кнопки ---- */
   .btn {
@@ -69,10 +106,12 @@
     background: #fff; color: #000; transition: opacity .2s;
   }
   .btn:disabled { opacity: .45; cursor: default; }
-  .btn.ghost { background: var(--field); color: var(--text); border: 1px solid var(--line); }
+  .btn.ghost { background: linear-gradient(165deg, rgba(255,255,255,.16), rgba(255,255,255,.06));
+    color: var(--text); border: 1px solid rgba(255,255,255,.2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+    -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
   .btn.danger { background: rgba(239,68,68,.16); color: #fca5a5; }
   .btn.small { padding: 8px 14px; font-size: 13px; }
-  .btn.round { width: 44px; height: 44px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .spacer { flex: 1; }
 
@@ -105,17 +144,31 @@
   .card { cursor: pointer; text-decoration: none; }
   .cover {
     position: relative; aspect-ratio: 2 / 3; border-radius: 20px; overflow: hidden;
-    background: var(--field); border: 1px solid var(--line);
+    background: var(--field); border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 12px 30px rgba(0,0,0,.4);
   }
   .cover img { width: 100%; height: 100%; object-fit: cover; }
-  .vip-badge {
-    position: absolute; left: 12px; top: 12px; padding: 6px 12px; border-radius: 999px;
-    background: var(--field); border: 1px solid var(--line); color: var(--gold); font-size: 12px; font-weight: 650;
+  .vip-badge {   /* как приписка VIP в профиле: золотой фон с бегущим белым бликом */
+    position: absolute; left: 12px; top: 12px; padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 800; letter-spacing: .1em; color: #4a3600;
+    background: linear-gradient(100deg, #fffdf5, #ffd700 32%, #ffffff 50%, #ffb700 68%, #fffdf5);
+    background-size: 260% 100%;
+    animation: goldflow 3.2s linear infinite, badgeGlow 3.2s ease-in-out infinite;
+    box-shadow: 0 0 14px rgba(255,215,0,.35), inset 0 0 0 1px rgba(255,255,255,.6);
   }
-  .cover .vip-text {
-    position: absolute; inset: auto 0 22% 0; text-align: center; font-size: 22px; font-weight: 800;
-    color: var(--gold); text-shadow: 0 2px 14px rgba(0,0,0,.8); letter-spacing: .04em; text-transform: uppercase;
+  /* избранное: сердечко справа от бейджа VIP. На ПК видно при наведении, на телефоне — всегда */
+  .fav {
+    position: absolute; right: 8px; top: 8px; width: 34px; height: 34px; padding: 0;
+    display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
+    background: rgba(0,0,0,.45); color: #a1a1aa; opacity: 0; transition: opacity .18s, color .18s, transform .18s;
   }
+  .card:hover .fav, .fav:focus-visible { opacity: 1; }
+  .fav.on { opacity: 1; color: #ef4444; }
+  .fav svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .fav.on svg { fill: currentColor; }
+  .fav:active { transform: scale(.9); }
+  @media (hover: none) { .fav { opacity: .9; } }
   .card .title { margin: 12px 4px 2px; font-weight: 600; font-size: 15px; line-height: 1.3; }
   .card .meta { margin: 0 4px; color: var(--muted); font-size: 13px; }
   .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
@@ -140,8 +193,10 @@
   }
   .vp.vertical { aspect-ratio: 9 / 16; max-height: 72vh; width: auto; max-width: 100%; margin: 0 auto; }
   .vp.fs { position: fixed; inset: 0; z-index: 999; background: #000; border-radius: 0; width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; margin: 0; }
-  .vp video { width: 100%; height: 100%; display: block; object-fit: contain; background: transparent; }
-  .vp.fs video { object-fit: contain; }
+  /* видео растянуто на весь кадр без чёрных полос по краям: края, не поместившиеся
+     в кадр, аккуратно обрезаются, а не закрываются чёрным */
+  .vp video { width: 100%; height: 100%; display: block; object-fit: cover; background: transparent; }
+  .vp.fs video { object-fit: cover; }
   .vp:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
   .vp-spin {
     position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
@@ -229,11 +284,18 @@
   .vp-ad-link { position: absolute; inset: 0; background: transparent; border: 0; cursor: pointer; }
   .vp-ad-link:disabled { cursor: default; }
   .vp-ad-tag { position: absolute; left: 14px; top: 12px; color: #fff; font-size: 13px; text-shadow: 0 1px 4px #000; pointer-events: none; }
+  /* пропуск рекламы: сначала обратный отсчёт, потом просто текст-кнопка без подложки */
+  .vp-ad-wait {
+    position: absolute; right: 16px; bottom: 20px; z-index: 2; color: #fff; font-size: 14px;
+    font-weight: 600; text-shadow: 0 1px 6px #000; pointer-events: none; font-variant-numeric: tabular-nums;
+  }
+  .vp-ad-wait.hidden { display: none; }
   .vp-ad-skip {
     position: absolute; right: 16px; bottom: 16px; top: auto; transform: none; z-index: 2;
-    padding: 10px 16px; border: 0; border-radius: 12px; background: rgba(0,0,0,.55); color: #fff;
-    font-size: 14px; font-weight: 600; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    padding: 6px 4px; border: 0; background: none; color: #fff; font-size: 15px; font-weight: 700;
+    text-shadow: 0 1px 6px #000; cursor: pointer;
   }
+  .vp-ad-skip:hover { text-decoration: underline; }
   .vp-ad-skip.hidden { display: none; }
   .vp-ad-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(0,0,0,.6); pointer-events: none; }
   .vp-ad-bar i { display: block; height: 100%; width: 0; background: #facc15; }
@@ -241,12 +303,6 @@
   .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .sec-head h2 { margin: 0; }
   .gold { color: var(--gold); letter-spacing: 2px; }
-  .vip-infinity {
-    font-weight: 700; background: linear-gradient(90deg, #ffd700, #ff6ec7, #5eead4, #a78bfa, #ffd700);
-    background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
-    animation: vipshine 3s linear infinite;
-  }
-  @keyframes vipshine { to { background-position: -300% 0; } }
   .ava { position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: none;
     background: var(--field); border: 1px solid var(--line); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--text); }
   .ava-lg { width: 84px; height: 84px; font-size: 30px; border-radius: 50%; }
@@ -256,9 +312,12 @@
   .modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 20px;
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   .modal { width: min(560px, 100%); max-height: 80vh; display: flex; flex-direction: column; overflow: hidden;
-    background: rgba(0,0,0,.82); border: 1px solid var(--line); border-radius: 24px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+    background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.28);
+    border-radius: 28px; backdrop-filter: blur(34px) saturate(160%); -webkit-backdrop-filter: blur(34px) saturate(160%);
+    box-shadow: 0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.18); }
   .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
   .modal-head b { font-size: 17px; font-weight: 600; }
+  .modal-bg.no-line .modal-head { border-bottom: 0; padding-bottom: 4px; }
   .modal-body { padding: 6px 20px 20px; overflow-y: auto; }
   .hist-card { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; padding: 10px; border-radius: 16px;
     border: 1px solid var(--line); background: rgba(0,0,0,.5); color: var(--text); text-decoration: none; }
@@ -274,31 +333,26 @@
   .ep-num { min-width: 28px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .ep-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ep-lock { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
-  .hist-row .more { color: var(--text); text-decoration: underline; }
-  .hist-row .info div { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  .hist-row .info p { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
   .vp-btn:focus-visible { outline: 2px solid rgba(255,255,255,.5); outline-offset: -2px; }
   .vp-btn svg { width: 22px; height: 22px; fill: currentColor; }
   .vp-btn.stroke svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .vp-btn.textual { width: auto; border-radius: 10px; padding: 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
   .vp-btn.textual.on, .vp-btn.stroke.on { background: #fff; color: #000; }
   .vp-vol { position: relative; display: flex; align-items: center; }
-  .vp-vslider {
-    position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); margin-bottom: 4px;
-    width: 40px; height: 128px; border-radius: 14px; background: rgba(0,0,0,.6); border: 1px solid var(--line);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: none;
+  /* Громкость — как перемотка: тонкая полоса, залитая по значению, без круглого бегунка.
+     Видна всегда — в обычном окне, в полном экране и на телефоне; двигается пальцем и мышью. */
+  .vp-vflat {
+    position: relative; flex: 0 1 88px; width: 88px; min-width: 44px; height: 22px; margin: 0 6px;
+    cursor: pointer; touch-action: none;
   }
-  .vp-vol:hover .vp-vslider { display: block; }
-  .vp-vol.open .vp-vslider { display: block; }
-  .vp.fs .vp-vslider { display: none !important; }
-  .vp-vslider input[type=range] {
-    position: absolute; left: 50%; top: 50%; width: 104px; height: 20px; margin: 0;
-    transform: translate(-50%, -50%) rotate(-90deg); background: transparent; -webkit-appearance: none; appearance: none;
+  .vp-vflat::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 4px;
+    transform: translateY(-50%); border-radius: 4px; background: rgba(255,255,255,.35);
   }
-  .vp-vslider input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: rgba(0,0,0,.6); }
-  .vp-vslider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4px; border-radius: 50%; background: #fff; }
-  .vp-vslider input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(0,0,0,.6); }
-  .vp-vslider input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #fff; }
+  .vp-vfill {
+    position: absolute; left: 0; top: 50%; height: 4px; width: 100%;
+    transform: translateY(-50%); border-radius: 4px; background: #fff;
+  }
   .vp-time { color: #fff; font-size: 13px; font-variant-numeric: tabular-nums; margin-left: 8px; white-space: nowrap; text-shadow: 0 1px 3px #000; }
   .vp-grow { flex: 1; }
   .vp-menu {
@@ -332,6 +386,98 @@
   .item .head { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
   .item .head b { color: var(--text); font-weight: 600; }
   .item p { margin: 6px 0 0; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .item .item-act { margin-top: 10px; display: flex; justify-content: flex-start; }
+
+  /* ---- тикеты поддержки ---- */
+  /* обычный тикет в ожидании: чёрный фон и бело-серая обводка */
+  .tk-card {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; text-decoration: none;
+    padding: 14px 16px; margin-bottom: 10px; border-radius: 18px; color: var(--text);
+    background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.3);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  }
+  .tk-num { min-width: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tk-body { flex: 1; min-width: 0; }
+  .tk-body b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tk-body small { color: var(--muted); font-size: 12px; }
+  .tk-kind { flex: none; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  /* тикеты, переданные админам и владельцу, подсвечены по важности:
+     идея — жёлтый, баг — красный, аниме и мультфильмы — зелёный (редактору на добавление) */
+  .tk-card.idea { background: rgba(250,204,21,.14); border-color: rgba(250,204,21,.65); }
+  .tk-card.idea .tk-kind { color: #facc15; border-color: rgba(250,204,21,.65); }
+  .tk-card.bug { background: rgba(248,113,113,.14); border-color: rgba(248,113,113,.65); }
+  .tk-card.bug .tk-kind { color: #f87171; border-color: rgba(248,113,113,.65); }
+  .tk-card.anime, .tk-card.cartoon { background: rgba(74,222,128,.14); border-color: rgba(74,222,128,.65); }
+  .tk-card.anime .tk-kind, .tk-card.cartoon .tk-kind { color: #4ade80; border-color: rgba(74,222,128,.65); }
+  /* шапка чата — тот же фон, что у нижней панели */
+  .tk-head {
+    position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
+    margin: -28px -20px 16px; padding: 14px 20px;
+    background: var(--field); border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+  }
+  .tk-head > svg { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .tk-head b { font-size: 16px; font-weight: 600; }
+  .tk-head .tk-id { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .tk-msgs { display: grid; gap: 10px; }
+  .tk-msg { max-width: 84%; padding: 10px 14px; border-radius: 18px; background: var(--field); border: 1px solid var(--line); }
+  .tk-msg.me { margin-left: auto; background: rgba(255,255,255,.12); }
+  .tk-msg .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .tk-msg p { margin: 0; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  /* док поля ввода: поднят выше нижней панели, а прикреплённая картинка показывается
+     ещё выше — прямо над полем. У самого поля своего фона нет. */
+  .tk-dock {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(104px + env(safe-area-inset-bottom)); width: min(calc(100% - 32px), 728px);
+    display: grid; gap: 8px; z-index: 12;
+  }
+  .tk-input { display: flex; gap: 8px; align-items: flex-end; width: 100%; background: none; }
+  /* прикреплённая картинка с крестиком: убирается до отправки */
+  .tk-pick { justify-self: start; position: relative; }
+  .tk-pick img { display: block; max-width: 220px; max-height: 160px; border-radius: 14px; border: 1px solid var(--line); }
+  .tk-pick button {
+    position: absolute; top: -9px; right: -9px; width: 26px; height: 26px; border-radius: 50%;
+    border: 0; background: #000; color: #fff; font-size: 17px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .tk-input textarea { flex: 1; min-height: 46px; max-height: 110px; resize: none; margin: 0; }
+  .tk-clip {
+    flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+    border: 1px solid var(--line); background: var(--field); color: var(--text); cursor: pointer; padding: 0;
+  }
+  .tk-clip svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .tk-go {
+    flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+    border: 0; background: #000; color: #fff; cursor: pointer; padding: 0;
+  }
+  .tk-go svg { width: 20px; height: 20px; fill: currentColor; }
+  .tk-shot { display: block; max-width: 220px; border-radius: 14px; border: 1px solid var(--line); margin-top: 6px; }
+  .tk-acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 118px; }
+
+  /* ---- подсказки при первом входе ---- */
+  /* рамка встаёт точно на кнопку, а всё остальное затемняет огромная тень вокруг неё */
+  .tour-spot {
+    position: fixed; z-index: 90; border-radius: 999px; border: 2px solid #fff; pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.72); transition: left .26s ease, top .26s ease,
+      width .26s ease, height .26s ease;
+  }
+  .tour-card {
+    position: fixed; z-index: 91; width: min(320px, calc(100% - 40px)); padding: 16px 16px 14px;
+    border-radius: 18px; background: #c9c9d1; color: #16161a; box-shadow: 0 18px 40px rgba(0,0,0,.5);
+  }
+  .tour-card b { display: block; margin: 0 26px 6px 0; font-size: 16px; }
+  .tour-card p { margin: 0 0 14px; font-size: 14px; line-height: 1.45; color: #26262c; }
+  .tour-acts { display: flex; gap: 8px; }
+  .tour-acts button {
+    flex: 1; border: 0; border-radius: 999px; padding: 10px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .tour-next { background: #000; color: #fff; }
+  .tour-skip { background: rgba(0,0,0,.16); color: #16161a; }
+  .tour-x {
+    position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; cursor: pointer;
+    border: 0; border-radius: 50%; background: rgba(0,0,0,.18); color: #16161a; font-size: 17px; line-height: 1;
+  }
 
   /* ---- тосты, админка, планы ---- */
   .toast {
@@ -365,27 +511,185 @@
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 13px; }
   .chip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font-size: 13px; line-height: 1; padding: 0; }
+
+  /* ==========================================================================
+     VIP: бессрочный ∞, золотая приписка, градиентный ник
+     ========================================================================== */
+  .vip-infinity {
+    display: inline-block; font-weight: 800;
+    background: linear-gradient(90deg, #ffd700, #ff6ec7, #5eead4, #a78bfa, #ffd700);
+    background-size: 300% 100%; -webkit-background-clip: text; background-clip: text;
+    color: transparent; -webkit-text-fill-color: transparent;
+    animation: vipshine 3.4s linear infinite, infpulse 2.6s ease-in-out infinite;
+    filter: drop-shadow(0 0 8px rgba(255,215,0,.45));
+  }
+  @keyframes vipshine { to { background-position: -300% 0; } }
+  @keyframes infpulse { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(1.22) rotate(-6deg); } }
+
+  .vip-tag {  /* золотая приписка VIP: белый + золотой градиент */
+    display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 800; letter-spacing: .1em; color: #4a3600;
+    background: linear-gradient(100deg, #fffdf5, #ffd700 32%, #ffffff 50%, #ffb700 68%, #fffdf5);
+    background-size: 260% 100%; animation: goldflow 3.2s linear infinite;
+    box-shadow: 0 0 14px rgba(255,215,0,.35), inset 0 0 0 1px rgba(255,255,255,.6);
+  }
+  @keyframes goldflow { to { background-position: -260% 0; } }
+
+  .nick-gradient {
+    background-image: var(--g, linear-gradient(90deg, #fff, #999));
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent; -webkit-text-fill-color: transparent;
+    font-weight: 700; animation: nickflow 6s linear infinite; background-size: 200% 100%;
+  }
+  @keyframes nickflow { to { background-position: -200% 0; } }
+
+  .balance-pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--field); font-size: 14px;
+  }
+  .balance-pill b { font-variant-numeric: tabular-nums; }
+
+  /* ==========================================================================
+     Анимации
+     ========================================================================== */
+  /* звезда: ходит влево-вправо, подпрыгивает, сдувается, лопается и снова надувается */
+  .star-pop { position: relative; display: inline-block; transform-origin: 50% 65%; animation: starBeat 2.8s cubic-bezier(.32,.9,.4,1) infinite; }
+  .star-pop::after {  /* вспышка-разрыв в момент «лопается» — небольшая и мягкая */
+    content: ""; position: absolute; left: 50%; top: 55%; width: 1em; height: 1em; margin: -.5em 0 0 -.5em;
+    border-radius: 50%; opacity: 0; pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(255,215,0,.55), 0 0 8px 2px rgba(255,190,60,.22);
+    animation: starBurst 2.8s ease-out infinite;
+  }
+  @keyframes starBeat {
+    0%   { transform: translateX(-7px) scale(1) rotate(-6deg); }
+    10%  { transform: translateX(6px)  scale(1.12) rotate(8deg); }
+    18%  { transform: translateX(-4px) scale(1.02) rotate(-4deg); }
+    26%  { transform: translateX(0)    scale(1) rotate(0deg); }
+    34%  { transform: translateY(-13px) scale(1.28) rotate(10deg); }   /* подпрыгнула */
+    42%  { transform: translateY(3px)   scale(.78) rotate(-8deg); }    /* приземлилась */
+    48%  { transform: scale(.62)        rotate(0deg); }                /* уменьшилась */
+    55%  { transform: scale(1.72)       rotate(16deg); opacity: .9; }  /* лопается */
+    60%  { transform: scale(.28)        rotate(0deg); opacity: .18; }
+    68%  { transform: scale(1.85)       rotate(-10deg); opacity: 1; }  /* надувается обратно */
+    77%  { transform: scale(.88) translateX(5px) rotate(4deg); }
+    86%  { transform: scale(1.08) translateX(-3px) rotate(-2deg); }
+    100% { transform: translateX(0) scale(1) rotate(0deg); }
+  }
+  @keyframes starBurst {
+    0%, 45% { opacity: 0; transform: scale(.3); }
+    55%     { opacity: .7; transform: scale(.85); }
+    70%,100%{ opacity: 0; transform: scale(1.3); }
+  }
+  /* появление блоков и карточек (backwards, чтобы после конца анимации не мешать hover) */
+  .anim-in { animation: cardIn .55s cubic-bezier(.2,.9,.25,1) backwards; }
+  .anim-d1 { animation-delay: .06s; } .anim-d2 { animation-delay: .12s; }
+  .anim-d3 { animation-delay: .18s; }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(16px) scale(.985); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+  .grid .card { animation: cardIn .5s cubic-bezier(.2,.9,.25,1) backwards; }
+  .grid .card:nth-child(1) { animation-delay: .02s; } .grid .card:nth-child(2) { animation-delay: .06s; }
+  .grid .card:nth-child(3) { animation-delay: .1s; }  .grid .card:nth-child(4) { animation-delay: .14s; }
+  .grid .card:nth-child(5) { animation-delay: .18s; } .grid .card:nth-child(6) { animation-delay: .22s; }
+
+  /* блик, пробегающий по кнопке */
+  .btn.sheen { position: relative; overflow: hidden; }
+  .btn.sheen::after {
+    content: ""; position: absolute; top: -60%; bottom: -60%; width: 40%; left: -60%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+    transform: rotate(12deg); animation: sweep 4.2s ease-in-out infinite;
+  }
+  @keyframes sweep { 0% { left: -60%; } 55%, 100% { left: 130%; } }
+
+  /* мягкие постоянные анимации: карточки, кнопки, бейджи, строки списков */
+  .card { transition: transform .35s cubic-bezier(.2,.9,.3,1.2), filter .35s; }
+  .card:hover { transform: translateY(-6px); filter: brightness(1.12); }
+  .card:hover .cover img { transform: scale(1.07); }
+  .cover img { transition: transform .6s cubic-bezier(.2,.8,.2,1); }
+  @keyframes badgeGlow { 0%, 100% { box-shadow: 0 0 0 rgba(255,215,0,0); } 50% { box-shadow: 0 0 14px rgba(255,215,0,.35); } }
+  .btn { transition: transform .22s cubic-bezier(.2,.9,.3,1.3), opacity .2s, box-shadow .22s; }
+  .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+  .btn:active:not(:disabled) { transform: translateY(0) scale(.97); }
+  .btn.ghost:hover:not(:disabled) { box-shadow: 0 8px 22px rgba(0,0,0,.25); }
+  .plan, .stat, .hist-card, .list-row .glass { transition: transform .3s cubic-bezier(.2,.9,.3,1.2), border-color .3s; }
+  .plan:hover, .stat:hover { transform: translateY(-4px); border-color: rgba(255,255,255,.28); }
+  .hist-card:hover { transform: translateX(4px); border-color: rgba(255,255,255,.28); }
+  .ep-row.off { opacity: .55; cursor: default; pointer-events: none; }
+  .ep-row { transition: background .2s, padding-left .25s cubic-bezier(.2,.9,.3,1.2); }
+  .ep-row:hover { background: var(--field); padding-left: 24px; }
+  .tabs button { transition: transform .2s, background .2s, color .2s; }
+  .tabs button:hover:not(.on) { transform: translateY(-2px); }
+  .pill { transition: border-color .25s, color .25s; }
+  /* одна мягкая кривая для всех интерактивных элементов: ничего не дёргается */
+  .btn, .linkbtn, .pg-btn, .chip, .card, .plan, .stat, .hist-card, .list-row, .ep-row,
+  .tabs button, .pill, .balance-pill, .field input, .field select, .field textarea, .check {
+    transition-property: transform, background, background-color, color, border-color,
+                         box-shadow, opacity, filter, padding-left;
+    transition-duration: .3s;
+    transition-timing-function: cubic-bezier(.25, .8, .3, 1);
+  }
+
+  /* переходы между экранами: содержимое мягко выплывает, без резкой смены */
+  #app.view-in { animation: viewIn .34s cubic-bezier(.25,.8,.3,1) both; }
+  @keyframes viewIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* модалка распускается и так же мягко гаснет */
+  .modal-bg { animation: fadeIn .26s ease both; }
+  .modal { animation: modalIn .38s cubic-bezier(.2,.9,.3,1.1) both; }
+  .modal-bg.out { animation: fadeOut .18s ease both; }
+  .modal-bg.out .modal { animation: modalOut .18s ease both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(26px) scale(.92); filter: blur(12px); } to { opacity: 1; transform: none; filter: none; } }
+  @keyframes modalOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(14px) scale(.97); } }
+
+  /* окно «Что такое VIP?»: обычный белый текст, пункты разделены тонкой белой полосой */
+  .vip-info { color: #fff; font-size: 15px; line-height: 1.65; }
+  .vip-info p { margin: 0; }
+  .vi-row { display: flex; align-items: flex-start; gap: 12px; }
+  .vi-ico { flex: none; width: 26px; height: 26px; margin-top: 1px; color: var(--gold);
+    filter: drop-shadow(0 0 6px rgba(255, 215, 0, .35)); }
+  .vi-ico svg { width: 100%; height: 100%; }
+  /* полоса между пунктами: полупрозрачная серая, не белая */
+  .vip-info .sep { width: 100%; height: 1px; border: 0; margin: 14px 0 14px 38px;
+    background: rgba(255, 255, 255, .1); }
+
+  /* редактор градиентного ника */
+  .grad-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0; }
+  .grad-presets button { height: 42px; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; padding: 0; transition: transform .2s; }
+  .grad-presets button:hover { transform: translateY(-3px) scale(1.04); }
+  .grad-presets button.on { box-shadow: 0 0 0 2px #fff; }
+  .grad-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  .grad-row input[type=color] { width: 52px; height: 42px; padding: 2px; border-radius: 12px; border: 1px solid var(--line); background: var(--field); }
+  .grad-row input[type=range] { width: 140px; padding: 0; border: 0; background: transparent; }
+
+  .toast.show { display: block; animation: toastIn .42s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, -22px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
   @media (max-width: 480px) {
     .plans { grid-template-columns: 1fr; }
     .hero-inner { grid-template-columns: 116px 1fr; gap: 14px; }
     .hero h1 { font-size: 20px; }
     .vp-time { font-size: 12px; }
     .vp-btn { width: 36px; height: 36px; }
+    .vp.fs .vp-time { display: none; }   /* место для ползунка громкости */
+    .grad-presets { grid-template-columns: repeat(3, 1fr); }
   }
 </style>
 </head>
 <body>
-<div class="wrap" id="app"></div>
+<div class="wrap" id="app"><div class="empty">Загрузка…</div></div>
 
 <nav class="nav" id="nav">
   <button data-go="catalog" title="Каталог" aria-label="Каталог">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
   </button>
-  <button data-go="search" title="Поиск" aria-label="Поиск">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5" stroke-linecap="round"/></svg>
+  <button data-go="favorites" title="Избранное" aria-label="Избранное">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 20s-7.2-4.4-9-9.1C1.8 7.6 3.6 4.5 6.8 4.5c2 0 3.6 1.1 5.2 3.2 1.6-2.1 3.2-3.2 5.2-3.2 3.2 0 5 3.1 3.8 6.4-1.8 4.7-9 9.1-9 9.1z"/></svg>
   </button>
   <button data-go="vip" title="VIP" aria-label="VIP">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3.1-5.4 3.1 1.2-6L3.3 9.3l6.1-.7z"/></svg>
+  </button>
+  <button data-go="support" title="Поддержка" aria-label="Поддержка">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><rect x="2.5" y="12.5" width="4" height="6.5" rx="1.8"/><rect x="17.5" y="12.5" width="4" height="6.5" rx="1.8"/><path d="M19.5 19v.5a2.5 2.5 0 0 1-2.5 2.5h-3"/></svg>
   </button>
   <button data-go="profile" title="Профиль" aria-label="Профиль">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" stroke-linecap="round"/></svg>
@@ -399,13 +703,16 @@
 <script>
 (() => {
   "use strict";
-  const tg = window.Telegram && window.Telegram.WebApp;
-  if (tg) { try { tg.ready(); tg.expand(); } catch (_) {} }
+  const tg = () => window.Telegram && window.Telegram.WebApp;  // скрипт с defer — берём лениво
   const app = document.getElementById("app");
   const nav = document.getElementById("nav");
   const MAX_UPLOAD = 2 * 1024 * 1024 * 1024;
+  const VIEW_MIN_SEC = 300;   // просмотр засчитывается после 5 минут, досматривать до конца не нужно
+  const AD_SKIP_SEC = 5;      // пропуск рекламы — через 5 секунд настоящего проигрывания ролика
 
-  const S = { me: { guest: true }, config: null, films: [], route: "catalog", player: null, timer: null, search: "", filmId: null };
+  const S = { me: { guest: true }, config: null, films: [], filmsLoaded: false, route: "catalog", player: null, timer: null,
+    search: "", filmId: null, lastKey: "", revPage: 1, catalogPage: 1, ticketKinds: [],
+    favs: [], favPage: 1 };
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -423,11 +730,38 @@
     not_refundable: "Возврат невозможен", telegram_refused: "Telegram отклонил возврат", already: "Эта роль уже есть",
     bad_amount: "Неверная сумма", processing: "Идёт обработка", subtitle_required: "Выберите файл субтитров",
     upload_incomplete: "Загрузка видео не завершена, попробуйте снова",
+    server_error: "Не удалось сохранить. Видео уже загружено — нажмите «Добавить» ещё раз",
     bad_subtitle: "Не удалось прочитать субтитры. Нужен SRT, VTT, ASS или SSA", too_large: "Файл больше 2 ГБ",
+    review_limit: "Лимит отзывов исчерпан. С VIP можно оставить два отзыва",
+    no_reviews_for_series: "У сериала отзывов нет — оставьте отзыв к серии",
+    not_enough_stars: "Недостаточно звёзд на балансе",
+    bad_gradient: "Такой градиент нельзя. Выберите цвета на палитре",
+    already_forever: "У вас уже VIP навсегда",
+    banned: "Ваш аккаунт заблокирован", ticket_closed: "Тикет закрыт",
+    bad_image: "Можно прикрепить только картинку", user_left: "Пользователь ушёл из бота",
+    bad_amount: "Неверная сумма",
   };
   const errText = (code) => ERRORS[code] || "Ошибка, попробуйте ещё раз";
 
-  function initData() { return (tg && tg.initData) || ""; }
+  // подписи жанров (сервер отдаёт их в /api/config, здесь — запасной вариант)
+  const GENRE_LABELS = { anime: "Аниме", cartoon: "Мультфильмы" };
+  const GENRE_IDS = ["anime", "cartoon"];
+  function genreLabel(id) {
+    const fromCfg = (S.config && S.config.genres || []).find((g) => g.id === id);
+    return (fromCfg && fromCfg.title) || GENRE_LABELS[id] || id;
+  }
+
+  // ---- золотая приписка VIP и градиентный ник ----
+  const vipTag = () => '<span class="vip-tag">VIP</span>';
+  // градиент приходит с сервера уже проверенным, лишние кавычки на всякий случай убираем
+  const safeGrad = (g) => String(g || "").replace(/["'\\;<>]/g, "").slice(0, 300);
+  const nickHtml = (r) => r.gradient
+    ? `<span class="nick-gradient" style="--g:${esc(safeGrad(r.gradient))}">${esc(r.name)}</span>`
+    : `<b>${esc(r.name)}</b>`;
+
+  function initData() { const t = tg(); return (t && t.initData) || ""; }
+  // тег <img> не умеет слать заголовки, поэтому подпись для картинок тикета едет в ?init=
+  const authSrc = (url) => url + (url.includes("?") ? "&" : "?") + "init=" + encodeURIComponent(initData());
 
   async function api(path, opts = {}) {
     const headers = { "X-Init-Data": initData() };
@@ -467,11 +801,13 @@
     if (f.status === "failed") return '<span class="pill bad">Ошибка</span>';
     return '<span class="pill ok">Готов</span>';
   }
-  // VIP-статус для профиля и страницы VIP: бессрочный доступ персонала показывается как ∞
-  function vipStatusHtml(me) {
-    if (!me.vipActive) return "VIP нет";
-    if (!me.vipUntil) return 'VIP: <span class="vip-infinity">бессрочно ∞</span>';
-    return "VIP до " + esc(fmtDate(me.vipUntil));
+  // Статус в профиле: «Права (Владелец) · VIP до ∞». Прав нет — просто «Пользователь»
+  function statusHtml(me) {
+    const role = me.roleTitle || "Пользователь";
+    const left = role === "Пользователь" ? "Пользователь" : "Права (" + esc(role) + ")";
+    if (!me.vipActive) return left;
+    if (me.vipForever || !me.vipUntil) return left + ' · VIP до <span class="vip-infinity">∞</span>';
+    return left + " · VIP до " + esc(fmtDate(me.vipUntil));
   }
 
   // ---- настройки плеера (сохраняются на устройстве) ----
@@ -487,6 +823,10 @@
     const h = (location.hash || "").replace(/^#\/?/, "");
     const parts = h.split("/").filter(Boolean);
     if (parts[0] === "film" && parts[1]) return { name: "film", id: parts[1] };
+    if (parts[0] === "support") return parts[1] ? { name: "support", id: parts[1] } : { name: "support" };
+    if (parts[0] === "favorites") return { name: "favorites" };
+    if (parts[0] === "search") return { name: "catalog" };   // отдельной вкладки поиска больше нет
+    if (parts[0] === "catalog") return { name: "catalog" };
     if (parts[0] === "admin") {
       if (parts[1] === "upload") return { name: "admin", tab: "upload" };
       if (parts[1] === "film" && parts[2]) return { name: "admin", tab: "films", edit: parts[2] };
@@ -511,28 +851,38 @@
 
   function stopPlayer() {
     if (S.player) { try { S.player.destroy(); } catch (_) {} S.player = null; }
+    clearInterval(S.timer); S.timer = null;
   }
 
   window.addEventListener("hashchange", render);
 
   async function render() {
     stopPlayer();
-    clearInterval(S.timer); S.timer = null;
     const r = parseRoute();
     S.route = r.name;
     setNav(r.name);
+    if (S.me.banned && r.name !== "support") { viewBanned(); return; }
     if (r.name === "admin" && !S.me.canUpload) { go("#/catalog"); return; }
     if (r.name === "admin" && r.tab === "users" && !S.me.canManage) { go("#/admin"); return; }
     if (r.name === "admin" && r.tab === "sales" && !S.me.isOwner) { go("#/admin"); return; }
     try {
       if (r.name === "catalog") await viewCatalog();
-      else if (r.name === "search") await viewSearch();
+      else if (r.name === "favorites") await viewFavorites();
       else if (r.name === "film") await viewFilm(r.id);
       else if (r.name === "vip") viewVip();
+      else if (r.name === "support") await viewSupport(r.id);
       else if (r.name === "profile") viewProfile();
       else if (r.name === "admin") await viewAdmin(r);
     } catch (e) { console.error(e); }
-    window.scrollTo({ top: 0 });
+    // новый экран выплывает мягко: перезапускаем анимацию появления
+    const key = location.hash || "#/catalog";
+    if (key !== S.lastKey) {
+      S.lastKey = key;
+      app.classList.remove("view-in");
+      void app.offsetWidth;
+      app.classList.add("view-in");
+      window.scrollTo({ top: 0 });
+    }
   }
 
   async function loadMe() {
@@ -545,44 +895,53 @@
   }
 
   // ---- каталог и поиск ----
+  const HEART = '<svg viewBox="0 0 24 24"><path d="M12 20s-7.2-4.4-9-9.1C1.8 7.6 3.6 4.5 6.8 4.5c2 0 3.6 1.1 5.2 3.2 1.6-2.1 3.2-3.2 5.2-3.2 3.2 0 5 3.1 3.8 6.4-1.8 4.7-9 9.1-9 9.1z"/></svg>';
   function filmCard(f) {
     const cover = f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="" loading="lazy" onerror="this.remove()">` : "";
+    // сердечко избранного: справа от бейджа VIP, на ПК появляется при наведении
+    const heart = S.me.guest ? "" :
+      `<button class="fav${f.favorite ? " on" : ""}" data-fav="${f.id}" aria-label="В избранное" title="В избранное">${HEART}</button>`;
     return `<a class="card" href="#/film/${f.id}">
-      <div class="cover">${cover}${f.isVip ? '<span class="vip-badge">VIP</span><div class="vip-text">Для VIP</div>' : ""}</div>
+      <div class="cover">${cover}${f.isVip ? '<span class="vip-badge">VIP</span>' : ""}${heart}</div>
       <div class="title">${esc(f.title)}</div>
-      <div class="meta">${esc(f.releaseDate ? f.releaseDate.slice(0, 4) : "")}${f.creator ? " · " + esc(f.creator) : ""}</div>
+      <div class="meta">${esc(f.releaseDate ? f.releaseDate.slice(0, 4) : "")}${f.creator ? " · " + esc(f.creator) : ""}${f.genre ? " · " + esc(genreLabel(f.genre)) : ""}</div>
     </a>`;
   }
 
-  // сезоны и серии сериала: по сезонам, текущая серия выделена
-  function seasonsHtml(eps, currentId) {
+  // серии сериала: один плоский список по номерам, текущая серия выделена
+  function episodesHtml(eps, currentId) {
     if (!eps.length) return '<div class="sub" style="margin:0">Серий пока нет</div>';
-    const seasons = {};
-    eps.forEach((e) => { (seasons[e.season] = seasons[e.season] || []).push(e); });
-    return Object.keys(seasons).map(Number).sort((a, b) => a - b).map((sn) => `
-      <h2 style="margin-top:18px">Сезон ${sn}</h2>
-      <div class="glass ep-list">${seasons[sn].sort((a, b) => a.episode - b.episode).map((e) => `
+    const rows = eps.slice().sort((a, b) => a.episode - b.episode).map((e) => e.status === "ready" ? `
         <a class="ep-row ${e.id === currentId ? "on" : ""}" href="#/film/${e.id}">
           <span class="ep-num">${e.episode}</span>
           <span class="ep-title">${esc(e.title)}</span>
           ${e.locked ? '<span class="ep-lock">VIP</span>' : ""}
-          ${e.status !== "ready" ? '<span class="ep-lock">обработка</span>' : ""}
-        </a>`).join("")}</div>`).join("");
+        </a>` : `
+        <div class="ep-row off" aria-disabled="true">
+          <span class="ep-num">${e.episode}</span>
+          <span class="ep-title">${esc(e.title)}</span>
+          <span class="ep-lock">обработка</span>
+        </div>`).join("");
+    return `<h2 style="margin-top:18px">Серии</h2><div class="glass ep-list">${rows}</div>`;
   }
 
   const PER_PAGE = 6;
   const arrowSvg = (dir) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${dir < 0 ? '<path d="M15 6l-6 6 6 6"/>' : '<path d="M9 6l6 6-6 6"/>'}</svg>`;
-  // список с пагинацией: 6 фильмов на страницу, внизу ← 1/20 →
-  function pagedGrid(list, page) {
-    const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+  // пагинация одна на всё приложение: 6 штук на страницу, внизу ← 1/20 →
+  function pagerOf(total, page) {
+    const pages = Math.max(1, Math.ceil(total / PER_PAGE));
     const cur = Math.min(Math.max(1, page), pages);
-    const items = list.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
-    const pager = pages > 1 ? `<nav class="pager" aria-label="Страницы">
+    const html = pages > 1 ? `<nav class="pager" aria-label="Страницы">
         <button class="pg-btn" data-pg="${cur - 1}" ${cur === 1 ? "disabled" : ""} aria-label="Назад">${arrowSvg(-1)}</button>
         <span class="pg-count">${cur}/${pages}</span>
         <button class="pg-btn" data-pg="${cur + 1}" ${cur === pages ? "disabled" : ""} aria-label="Вперёд">${arrowSvg(1)}</button>
       </nav>` : "";
-    return { html: `<div class="grid">${items.map(filmCard).join("")}</div>${pager}`, page: cur };
+    return { html, page: cur };
+  }
+  const slicePage = (list, cur) => list.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
+  function pagedGrid(list, page) {
+    const p = pagerOf(list.length, page);
+    return { html: `<div class="grid">${slicePage(list, p.page).map(filmCard).join("")}</div>${p.html}`, page: p.page };
   }
   function bindPager(root, redraw) {
     root.addEventListener("click", (e) => {
@@ -593,53 +952,165 @@
     });
   }
 
+  // отпечаток списка: нужен, чтобы не перерисовывать экран, когда данные не изменились
+  const filmsSig = (list) => list.map((f) => [f.id, f.title, f.status, f.isVip, f.genre, f.hasPoster].join(":")).join("|");
+  const favsSig = (list) => list.map((f) => f.id).join(",");
+
+  // поиск живёт прямо на главной: поле под описанием, результаты на месте списка
   async function viewCatalog() {
-    S.films = await call("/api/films").catch(() => []);
+    // экран рисуем сразу, не дожидаясь сети: сначала то, что уже есть в памяти
+    app.innerHTML = `
+      <h1>Аниме, Мультфильмы</h1>
+      <p class="sub">Смотрите аниме и мультфильмы, в отличном качестве!</p>
+      <input type="search" id="q" placeholder="Поиск: название, автор или описание" value="${esc(S.search)}" autocomplete="off">
+      <div id="list" style="margin-top:18px"></div>`;
     const draw = (p) => {
-      const g = pagedGrid(S.films, p);
-      $("#list").innerHTML = S.films.length ? g.html : '<div class="empty">Пока нет фильмов</div>';
+      const list = $("#list");
+      if (!list || S.route !== "catalog") return;   // экран уже сменился — не трогаем его
+      const found = S.search
+        ? S.films.filter((f) => [f.title, f.creator, f.description].join(" ").toLowerCase().includes(S.search))
+        : S.films;
+      if (!S.films.length) {
+        // список уже приходил с сервера — значит каталог правда пуст, а не «грузится»
+        list.innerHTML = `<div class="empty">${S.filmsLoaded ? "Пока ничего нет" : "Загрузка..."}</div>`;
+        return;
+      }
+      if (!found.length) { list.innerHTML = '<div class="empty">Ничего не найдено</div>'; return; }
+      const g = pagedGrid(found, p);
+      list.innerHTML = g.html;
       S.catalogPage = g.page;
     };
-    app.innerHTML = `
-      <h1>Фильмы</h1>
-      <p class="sub">Смотрите фильмы и сериалы, в отличном качестве!</p>
-      <div id="list"></div>`;
-    draw(S.catalogPage || 1);
     bindPager($("#list"), (p) => { draw(p); });
+    $("#q").addEventListener("input", (e) => { S.search = e.target.value.trim().toLowerCase(); draw(1); });
+    if (S.films.length) draw(S.catalogPage || 1);
+    else $("#list").innerHTML = '<div class="empty">Загрузка...</div>';
+    // свежие данные подтягиваем фоном и перерисовываем только если список правда изменился
+    const fresh = await call("/api/films").catch(() => null);
+    if (!fresh) return;
+    const changed = filmsSig(fresh) !== filmsSig(S.films);
+    S.films = fresh;
+    S.filmsLoaded = true;
+    if (changed || !S.films.length) draw(S.catalogPage || 1);
   }
 
-  async function viewSearch() {
-    if (!S.films.length) S.films = await call("/api/films").catch(() => []);
-    app.innerHTML = `
-      <h1>Поиск</h1>
-      <p class="sub">Название, автор или описание.</p>
-      <input type="search" id="q" placeholder="Что посмотреть?" value="${esc(S.search)}" autocomplete="off">
-      <div class="section" id="res"></div>`;
-    const input = $("#q");
-    let list = [];
-    const draw = (p = 1) => {
-      if (!S.search) { $("#res").innerHTML = '<div class="empty search-idle">Вы еще не искали!</div>'; return; }
-      list = S.films.filter((f) => [f.title, f.creator, f.description].join(" ").toLowerCase().includes(S.search));
-      const g = pagedGrid(list, p);
-      $("#res").innerHTML = list.length ? g.html : '<div class="empty">Ничего не найдено</div>';
+  // ---- избранное ----
+  async function viewFavorites() {
+    app.innerHTML = `<h1>Избранное</h1>
+      <p class="sub">Что вы отложили посмотреть позже. Сердечко на обложке — добавить или убрать.</p>
+      <div id="favList"></div>`;
+    const draw = (p) => {
+      const box = $("#favList");
+      if (!box || S.route !== "favorites") return;
+      if (!S.favs.length) { box.innerHTML = '<div class="empty">Пока пусто. Нажмите на сердечко на обложке, чтобы отложить аниме или мультфильм.</div>'; return; }
+      const g = pagedGrid(S.favs, p);
+      box.innerHTML = g.html;
+      S.favPage = g.page;
     };
-    input.addEventListener("input", () => { S.search = input.value.trim().toLowerCase(); draw(1); });
-    bindPager($("#res"), (p) => draw(p));
-    draw(1);
+    bindPager($("#favList"), (p) => { draw(p); });
+    draw(S.favPage || 1);
+    const fresh = await call("/api/favorites").catch(() => null);
+    if (!fresh || S.route !== "favorites") return;
+    const changed = favsSig(fresh) !== favsSig(S.favs);
+    S.favs = fresh;
+    if (changed) draw(S.favPage || 1);
   }
+
+  // забанен: сайт закрыт, открыта только поддержка для апелляции
+  function viewBanned() {
+    app.innerHTML = `
+      <h1>Доступ закрыт</h1>
+      <p class="sub">Ваш аккаунт заблокирован, смотреть аниме и мультфильмы нельзя.
+        Если считаете, что это ошибка, напишите в поддержку — обращение рассмотрят.</p>
+      <button class="btn sheen" id="goAppeal">Написать апелляцию</button>`;
+    $("#goAppeal").onclick = () => go("#/support");
+  }
+
+  // сердечко избранного: кладём и убираем одним нажатием, карточка при этом не открывается
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-fav]");
+    if (!b) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = await api(`/api/films/${b.dataset.fav}/favorite`, { body: {} });
+    if (!r.ok) { toast(errText(r.data.error)); return; }
+    const on = !!r.data.favorite;
+    b.classList.toggle("on", on);
+    const id = Number(b.dataset.fav);
+    const hit = S.films.find((f) => f.id === id);
+    S.films.forEach((f) => { if (f.id === id) f.favorite = on; });
+    S.favs.forEach((f) => { if (f.id === id) f.favorite = on; });
+    if (on) { if (hit && !S.favs.some((f) => f.id === id)) S.favs.unshift({ ...hit, favorite: true }); }
+    else S.favs = S.favs.filter((f) => f.id !== id);
+    toast(on ? "Добавлено в избранное" : "Убрано из избранного");
+  });
 
   // ---- фильм ----
   const avatarHtml = (uid, name) => `<span class="ava"><b>${esc(String(name || "?").trim().charAt(0).toUpperCase())}</b><img src="/api/avatar/${esc(uid)}" alt="" onerror="this.remove()"></span>`;
   const starRow = (n) => `<span class="gold">${"★".repeat(n)}</span>`;
+  // отзыв: градиентный ник у VIP и золотая приписка VIP; кнопка «Удалить» — ниже текста
   const reviewItem = (r) => `<div class="item">
-      <div class="head">${avatarHtml(r.userId, r.name)}<b>${esc(r.name)}</b>${starRow(r.rating)}<span>${esc(fmtDate(r.date))}</span>
-      ${r.canDelete ? `<span class="spacer"></span><button class="btn ghost small" data-del-review="${r.id}">Удалить</button>` : ""}</div>
-      ${r.text ? `<p>${esc(r.text)}</p>` : ""}</div>`;
+      <div class="head">${avatarHtml(r.userId, r.name)}${nickHtml(r)}${r.vip ? vipTag() : ""}${starRow(r.rating)}<span>${esc(fmtDate(r.date))}</span></div>
+      ${r.text ? `<p>${esc(r.text)}</p>` : ""}
+      ${r.canDelete ? `<div class="item-act"><button class="btn ghost small" data-del-review="${r.id}">Удалить</button></div>` : ""}</div>`;
 
-  function openModal(title, bodyHtml) {
-    closeModal();
+  // отзывы идут один под другим, по 6 на страницу и листаются стрелками, как каталог.
+  // Порядок приходит с сервера: сначала отзывы с VIP, потом обычные.
+  function drawReviews(f, page) {
+    const box = $("#revList");
+    if (!box) return;
+    const list = f.reviews || [];
+    if (!list.length) {
+      S.revPage = 1;
+      box.innerHTML = '<div class="sub" style="margin:0">Отзывов пока нет</div>';
+      return;
+    }
+    const p = pagerOf(list.length, page);
+    S.revPage = p.page;
+    box.innerHTML = `<div class="featured">${slicePage(list, p.page).map(reviewItem).join("")}</div>${p.html}`;
+  }
+
+  // кнопки рядом с заголовком «Отзывы»: рисуются отдельно от всей страницы
+  function paintReviewButtons(f) {
+    const row = $("#revBtns");
+    if (!row) return;
+    const canWrite = !!f.canReview && !S.me.guest && !f.locked;
+    const myCount = (f.reviews || []).filter((r) => r.userId === S.me.id).length;
+    row.innerHTML = `${canWrite ? '<button class="btn small" id="leaveReview">Оставить отзыв</button>' : ""}
+      ${canWrite && myCount && myCount < (f.reviewLimit || 1) ? '<button class="btn ghost small" id="leaveReview2">Оставить ещё</button>' : ""}`;
+    const lr = $("#leaveReview");
+    const lr2 = $("#leaveReview2");
+    if (lr) lr.onclick = () => openReviewForm(f);
+    if (lr2) lr2.onclick = () => openReviewForm(f);
+  }
+
+  function bindReviewsPager() {
+    const box = $("#revList");
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = "1";
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-pg]");
+      if (!b || b.disabled || !S.film) return;
+      drawReviews(S.film, Number(b.dataset.pg));
+      if (typeof box.scrollIntoView === "function") box.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  // после отзыва обновляются только отзывы: плеер не трогается, видео не начинается заново
+  async function refreshReviews(page) {
+    const f = S.film;
+    if (!f || S.route !== "film") return;
+    const fresh = await call(`/api/films/${f.id}`).catch(() => null);
+    if (!fresh || S.route !== "film" || String(S.filmId) !== String(f.id)) return;
+    S.film = fresh;
+    drawReviews(fresh, page || S.revPage || 1);
+    paintReviewButtons(fresh);
+  }
+
+  function openModal(title, bodyHtml, cls) {
+    const prev = document.getElementById("modalBg");
+    if (prev) prev.remove();   // прошлое окно (в том числе закрывающееся) убираем сразу
     const bg = document.createElement("div");
-    bg.className = "modal-bg";
+    bg.className = "modal-bg" + (cls ? " " + cls : "");
     bg.id = "modalBg";
     bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head"><b>${esc(title)}</b><button class="btn ghost small" data-close aria-label="Закрыть">Закрыть</button></div>
@@ -648,26 +1119,38 @@
     document.body.appendChild(bg);
     return bg.querySelector(".modal-body");
   }
-  function closeModal() { const m = document.getElementById("modalBg"); if (m) m.remove(); }
+  function closeModal() {
+    const m = document.getElementById("modalBg");
+    if (!m || m.dataset.out) return;
+    m.dataset.out = "1";
+    m.classList.add("out");          // доигрываем затухание и только потом убираем из DOM
+    setTimeout(() => m.remove(), 190);
+  }
 
+  // Новый отзыв. С VIP можно оставить второй; изменить отзыв нельзя — удалите и напишите заново
   function openReviewForm(f) {
+    const limit = f.reviewLimit || 1;
+    const mine = (f.reviews || []).filter((r) => r.userId === S.me.id);
     const body = openModal("Оставить отзыв", `
       <div class="stars" id="starPick">${[1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}">★</button>`).join("")}</div>
       <label class="field" style="margin:14px 0"><textarea id="reviewText" maxlength="1000" placeholder="Ваш отзыв"></textarea></label>
-      <button class="btn" id="sendReview">Отправить</button>`);
+      <p class="hint" style="margin:-6px 0 14px">Ваших отзывов: ${mine.length} из ${limit}</p>
+      <button class="btn sheen" id="sendReview" style="display:block;width:100%">Отправить</button>`);
     let stars = 0;
+    const paint = () => body.querySelectorAll("#starPick button").forEach((x) => x.classList.toggle("on", Number(x.dataset.star) <= stars));
     body.querySelector("#starPick").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-star]");
       if (!b) return;
       stars = Number(b.dataset.star);
-      body.querySelectorAll("#starPick button").forEach((x) => x.classList.toggle("on", Number(x.dataset.star) <= stars));
+      paint();
     });
     body.querySelector("#sendReview").onclick = async () => {
       if (!stars) { toast("Выберите оценку"); return; }
-      await call(`/api/films/${f.id}/reviews`, { body: { rating: stars, text: body.querySelector("#reviewText").value } }).catch(() => null);
+      const r = await api(`/api/films/${f.id}/reviews`, { body: { rating: stars, text: body.querySelector("#reviewText").value } });
+      if (!r.ok) { toast(errText(r.data.error)); return; }
       closeModal();
       toast("Отзыв сохранён");
-      viewFilm(f.id);
+      await refreshReviews(1);
     };
   }
 
@@ -675,54 +1158,58 @@
     stopPlayer();
     const f = await call(`/api/films/${id}`).catch(() => null);
     S.filmId = id;
-    if (!f) { app.innerHTML = '<div class="empty">Фильм не найден</div>'; return; }
+    S.film = f;
+    if (!f) { app.innerHTML = '<div class="empty">Не найдено</div>'; return; }
     const poster = f.hasPoster ? `/api/films/${f.id}/poster` : "";
-    const preview = (f.featured || []).map(reviewItem).join("");
-    const canWrite = !S.me.guest && !f.locked;
     const desc = f.description || "";
     const longDesc = desc.length > 220;
     const isSeries = f.kind === "series";
+    const isEpisode = !!f.seriesId;   // серия сериала: без блока описания
 
     app.innerHTML = `
       <section class="hero" style="--poster: url('${poster}')">
         <div class="hero-inner">
           <div class="cover">
             ${poster ? `<img src="${poster}" alt="" onerror="this.remove()">` : ""}
-            ${f.isVip ? '<span class="vip-badge">VIP</span><div class="vip-text">Для VIP</div>' : ""}
+            ${f.isVip ? '<span class="vip-badge">VIP</span>' : ""}
           </div>
           <div>
-            <h1>${esc(f.title)}</h1>
+            <h1 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${esc(f.title)}${isSeries
+              ? ' <span class="pill">Серии</span>'
+              : (f.genre ? ` <span class="pill">${esc(genreLabel(f.genre))}</span>` : "")}</h1>
             <div class="facts">
               <div>Дата выхода: <b>${esc(fmtRelease(f.releaseDate))}</b></div>
               <div>Автор: <b>${esc(f.creator || "не указан")}</b></div>
               <div>Страна: <b>${esc(f.country || "не указана")}</b></div>
               <div>Оценка: <b>${f.reviewCount ? f.rating.toFixed(1) + " (" + f.reviewCount + ")" : "нет"}</b></div>
               ${f.duration ? `<div>Длительность: <b>${fmtClock(f.duration)}</b></div>` : ""}
+              ${isEpisode ? `<div>Просмотров: <b>${f.views}</b></div>` : ""}
             </div>
           </div>
         </div>
       </section>
 
-      ${isSeries ? `<section class="section">${seasonsHtml(f.episodes || [], null)}</section>` : `<section class="section"><div id="player"></div></section>`}
+      ${isSeries ? `<section class="section">${episodesHtml(f.episodes || [], null)}</section>` : `<section class="section"><div id="player"></div></section>`}
 
-      <section class="section">
-        <h2>Описание <span class="pill views-pill">Просмотров: ${f.views}</span></h2>
+      ${isEpisode ? "" : `<section class="section">
+        <h2>Описание${isSeries ? "" : ` <span class="pill views-pill">Просмотров: ${f.views}</span>`}</h2>
         <p class="desc${longDesc ? " clamp" : ""}" id="desc">${esc(desc || "Описание пока не добавлено.")}</p>
         ${longDesc ? '<button class="linkbtn" id="descMore">Читать дальше</button>' : ""}
-      </section>
+      </section>`}
 
       <section class="section">
         <div class="sec-head">
           <h2>Отзывы</h2>
-          <div class="row">
-            <button class="btn ghost small" id="allReviews">Все отзывы</button>
-            ${canWrite ? '<button class="btn small" id="leaveReview">Оставить отзыв</button>' : ""}
-          </div>
+          <div class="row" id="revBtns"></div>
         </div>
-        ${preview ? `<div class="featured">${preview}</div>` : ""}
+        ${S.me.vipActive ? `<p class="hint" style="margin:-4px 0 10px">С VIP можно оставить ${f.reviewLimit || 2} отзыва</p>` : ""}
+        <div id="revList"></div>
       </section>`;
 
     if (!isSeries) await mountFilmPlayer(f);
+    drawReviews(f, 1);
+    paintReviewButtons(f);
+    bindReviewsPager();
     bindFilm(f);
   }
 
@@ -732,14 +1219,6 @@
       const nowClamped = $("#desc").classList.toggle("clamp");
       more.textContent = nowClamped ? "Читать дальше" : "Скрыть";
     };
-    $("#allReviews").onclick = () => {
-      const all = f.reviews.length
-        ? f.reviews.map(reviewItem).join("")
-        : '<div class="sub" style="margin:0">Отзывов пока нет</div>';
-      openModal(`Отзывы · ${f.reviews.length}`, all);
-    };
-    const lr = $("#leaveReview");
-    if (lr) lr.onclick = () => openReviewForm(f);
   }
 
   // удаление отзывов (один обработчик на документ, модалки тоже внутри)
@@ -748,7 +1227,7 @@
     if (!rv) return;
     await call(`/api/reviews/${rv.dataset.delReview}/delete`, { body: {} }).catch(() => null);
     closeModal();
-    if (S.filmId && S.route === "film") viewFilm(S.filmId);
+    if (S.filmId && S.route === "film") await refreshReviews();
   });
 
   // ---- плеер ----
@@ -774,15 +1253,20 @@
     const box = $("#player");
     if (f.locked) {
       box.innerHTML = `<div class="locked"><div>
-        <h2>Этот фильм для VIP</h2>
-        <p class="sub" style="margin-bottom:16px">Подписка открывает все VIP-фильмы.</p>
+        <h2>Доступно с VIP</h2>
+        <p class="sub" style="margin-bottom:16px">Подписка открывает всё с пометкой VIP.</p>
         <button class="btn" data-go-vip>Оформить VIP</button></div></div>`;
       box.querySelector("[data-go-vip]").onclick = () => go("#/vip");
       return;
     }
     if (f.status !== "ready" && f.kind === "video") {
-      box.innerHTML = `<div class="locked"><p class="sub" style="margin:0">Фильм обрабатывается. Обычно это несколько минут.</p></div>`;
-      S.timer = setInterval(() => { if (S.route === "film") viewFilm(f.id); }, 15000);
+      box.innerHTML = `<div class="locked"><p class="sub" style="margin:0">Видео обрабатывается. Обычно это несколько минут.</p></div>`;
+      // один таймер на фильм: старый гасим, иначе они копятся и открывают эту страницу сами
+      clearInterval(S.timer);
+      S.timer = setInterval(() => {
+        if (S.route === "film" && String(S.filmId) === String(f.id)) viewFilm(f.id);
+        else clearInterval(S.timer);
+      }, 15000);
       return;
     }
     const r = await api(`/api/films/${f.id}/play`, { method: "POST" });
@@ -802,16 +1286,17 @@
     const posterUrl = f.hasPoster ? `/api/films/${f.id}/poster` : "";
     box.innerHTML = `
       <div class="vp ${vertical ? "vertical" : ""} loading" id="vp" tabindex="0" aria-label="Видеоплеер">
-        <video id="vid" playsinline preload="metadata"${posterUrl ? ` poster="${esc(posterUrl)}"` : ""}></video>
+        <video id="vid" playsinline webkit-playsinline preload="metadata"${posterUrl ? ` poster="${esc(posterUrl)}"` : ""}></video>
         <div class="vp-spin"></div>
         <div class="vp-flash" id="vpFlash"></div>
         <div class="vp-skip l" id="vpSkipL"></div>
         <div class="vp-skip r" id="vpSkipR"></div>
         <button class="vp-resume hidden" id="vpResume"></button>
         <div class="vp-ad hidden" id="vpAd">
-          <video id="adVid" playsinline preload="auto"></video>
+          <video id="adVid" playsinline webkit-playsinline preload="auto"></video>
           <button class="vp-ad-link" id="adLink" aria-label="Перейти по ссылке рекламы"></button>
           <span class="vp-ad-tag">Реклама</span>
+          <span class="vp-ad-wait hidden" id="adWait"></span>
           <button class="vp-ad-skip hidden" id="adSkip">Пропустить</button>
           <div class="vp-ad-bar"><i id="adFill"></i></div>
         </div>
@@ -827,9 +1312,9 @@
           </div>
           <div class="vp-row">
             <button class="vp-btn" id="vpPlay" aria-label="Воспроизвести">${ICON.play}</button>
-            <div class="vp-vol" id="vpVolBox">
+            <div class="vp-vol">
               <button class="vp-btn" id="vpMute" aria-label="Звук">${ICON.vol}</button>
-              <div class="vp-vslider"><input type="range" id="vpVol" min="0" max="1" step="0.02" aria-label="Громкость"></div>
+              <div class="vp-vflat" id="vpVolFlat" role="slider" aria-label="Громкость"><div class="vp-vfill" id="vpVolFill"></div></div>
             </div>
             <span class="vp-time" id="vpTime">0:00 / 0:00</span>
             <span class="vp-grow"></span>
@@ -844,9 +1329,10 @@
 
     const vp = $("#vp"), video = $("#vid"), bar = $("#vpBar"), prog = $("#vpProg"), menu = $("#vpMenu");
     const adVid = $("#adVid"), adEl = $("#vpAd"), adSkip = $("#adSkip"), adFill = $("#adFill"), adLink = $("#adLink"), resumeBtn = $("#vpResume");
+    const adWait = $("#adWait");
     const subsBox = $("#vpSubs"), flash = $("#vpFlash");
     const state = { hls: null, levels: [], menuPage: null, dragging: false, hideT: null, clickT: null, flashT: null, lastSave: 0, subTracks: [], curSub: "off",
-      ad: null, adTimes: null, adIdx: 0, adSkipT: null, resumeAt: data.resumeAt || 0 };
+      ad: null, adTimes: null, adIdx: 0, adPlayed: 0, adLastT: null, resumeAt: data.resumeAt || 0, viewSent: false };
     const dur = () => (isFinite(video.duration) && video.duration > 0 ? video.duration : (f.duration || 0));
 
     // медиа-сессия: на экране блокировки/в системных мини-плеерах тоже будет обложка фильма
@@ -918,7 +1404,7 @@
     // ---- громкость, скорость ----
     video.volume = prefs.volume; video.muted = prefs.muted;
     video.playbackRate = prefs.speed;
-    $("#vpVol").value = prefs.muted ? 0 : prefs.volume;
+    setVolBar(prefs.muted ? 0 : prefs.volume);
     $("#vpSpeed").textContent = prefs.speed === 1 ? "1×" : prefs.speed + "×";
     $("#vpSpeed").classList.toggle("on", prefs.speed !== 1);
 
@@ -961,6 +1447,8 @@
       clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 600);
       wake();
     }
+    // заливка полосы громкости: ширина по значению, как у перемотки
+    function setVolBar(v) { $("#vpVolFill").style.width = Math.round(v * 100) + "%"; }
     function setVolume(v) {
       v = Math.min(1, Math.max(0, v));
       video.volume = v;
@@ -1022,7 +1510,7 @@
       } else if (state.menuPage === "subs") {
         menu.innerHTML = back("Субтитры") + (state.subTracks.length
           ? opt("sub:off", "Выкл", state.curSub === "off") + state.subTracks.map((s) => opt(`sub:${s.lang}`, s.label, state.curSub === s.lang)).join("")
-          : '<div class="vp-mrow" style="color:var(--muted);white-space:normal">У этого фильма нет субтитров. Администратор может загрузить их в редактировании фильма.</div>');
+          : '<div class="vp-mrow" style="color:var(--muted);white-space:normal">У этого видео нет субтитров. Администратор может загрузить их в редактировании.</div>');
       }
     }
     // клики по панели и меню не доходят до клика по видео: меню перерисовывается во время клика
@@ -1048,7 +1536,7 @@
     $("#vpSet").onclick = (e) => { e.stopPropagation(); state.menuPage ? closeMenu() : openMenu("main"); };
     $("#vpCc").onclick = (e) => {
       e.stopPropagation();
-      if (!state.subTracks.length) { toast("У этого фильма нет субтитров"); return; }
+      if (!state.subTracks.length) { toast("У этого видео нет субтитров"); return; }
       if (state.curSub !== "off") return setSub("off");
       setSub(state.subTracks[0].lang);
     };
@@ -1058,19 +1546,25 @@
       setSpeed(SPEEDS[(i + 1) % SPEEDS.length]);
     };
     $("#vpPlay").onclick = (e) => { e.stopPropagation(); togglePlay(); };
-    // громкость: на устройствах без hover (телефоны) клик по кнопке открывает и закрывает
-    // ползунок, на мыши — обычный тап переключает mute (ползунок открывается наведением)
-    const volBox = $("#vpVolBox");
-    const isTouch = "ontouchstart" in window || (window.matchMedia && matchMedia("(hover: none)").matches);
-    $("#vpMute").onclick = (e) => {
-      e.stopPropagation();
-      if (isTouch) { volBox.classList.toggle("open"); wake(); }
-      else toggleMute();
+    // кнопка звука глушит и возвращает звук, а громкость двигается полосой рядом с ней
+    $("#vpMute").onclick = (e) => { e.stopPropagation(); toggleMute(); wake(); };
+    // полоса громкости: нажал в любом месте и тянешь, как перемотку, — на телефоне и на ПК
+    const volBar = $("#vpVolFlat");
+    let volDrag = false;
+    const volAt = (clientX) => {
+      const r = volBar.getBoundingClientRect();
+      return r.width ? Math.min(1, Math.max(0, (clientX - r.left) / r.width)) : 0;
     };
-    document.addEventListener("click", (e) => {
-      if (isTouch && volBox.classList.contains("open") && !e.target.closest("#vpVolBox")) volBox.classList.remove("open");
+    volBar.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      volDrag = true;
+      try { volBar.setPointerCapture(e.pointerId); } catch (_) {}
+      setVolume(volAt(e.clientX));
     });
-    $("#vpVol").addEventListener("input", (e) => setVolume(Number(e.target.value)));
+    volBar.addEventListener("pointermove", (e) => { if (volDrag) setVolume(volAt(e.clientX)); });
+    const volStop = () => { volDrag = false; };
+    volBar.addEventListener("pointerup", volStop);
+    volBar.addEventListener("pointercancel", volStop);
     $("#vpFs").onclick = (e) => { e.stopPropagation(); toggleFs(); };
     if (document.pictureInPictureEnabled && video.requestPictureInPicture) $("#vpPip").classList.remove("hidden");
     $("#vpPip").onclick = (e) => { e.stopPropagation(); togglePip(); };
@@ -1143,15 +1637,28 @@
     video.addEventListener("ended", () => {
       $("#vpPlay").innerHTML = ICON.replay; vp.classList.remove("idle");
       try { localStorage.removeItem("pos:" + f.id); } catch (_) {}
-      // просмотр засчитывается только при полном досмотре до конца
-      fetch(`/api/films/${f.id}/complete`, { method: "POST", headers: { "X-Init-Data": initData() } }).catch(() => {});
+      sendComplete();   // короткий ролик досмотрен — просмотр тоже засчитывается
+    });
+    // Просмотр засчитывается, когда зритель посмотрел 5 минут: в конце титры и субтитры,
+    // их смотрят не все. Решает сервер по позиции, он же не даёт накрутить повторно.
+    function sendComplete() {
+      if (state.viewSent || state.ad) return;
+      state.viewSent = true;
+      fetch(`/api/films/${f.id}/complete`, {
+        method: "POST",
+        headers: { "X-Init-Data": initData(), "Content-Type": "application/json" },
+        body: JSON.stringify({ position: video.currentTime, duration: dur() }),
+      }).catch(() => {});
+    }
+    video.addEventListener("timeupdate", () => {
+      if (!state.viewSent && video.currentTime >= VIEW_MIN_SEC) sendComplete();
     });
     video.addEventListener("waiting", () => vp.classList.add("loading"));
     video.addEventListener("playing", () => vp.classList.remove("loading"));
     video.addEventListener("canplay", () => vp.classList.remove("loading"));
     video.addEventListener("volumechange", () => {
       const v = video.muted ? 0 : video.volume;
-      $("#vpVol").value = v;
+      setVolBar(v);
       $("#vpMute").innerHTML = v === 0 ? ICON.mute : ICON.vol;
     });
     video.addEventListener("error", () => { if (!state.hls && video.error) showError("Не удалось загрузить видео"); });
@@ -1184,7 +1691,10 @@
     window.addEventListener("pagehide", saveProgress);
 
     // ---- реклама (только без VIP): ролик стартует у своей отметки; при перемотке через отметку сдвигается на 10-20 с после места продолжения ----
-    const adList = (data.ads || []).map((a) => ({ ...a, shown: false }));
+    // VIP-пользователю рекламный блок даже не создаётся
+    const isVip = !!(S.me && S.me.vipActive);
+    const adList = isVip ? [] : (data.ads || []).map((a) => ({ ...a, shown: false }));
+    if (isVip) adEl.remove();
     state.lastT = 0;
     function startAd(a) {
       a.shown = true;
@@ -1196,17 +1706,20 @@
       adSkip.classList.add("hidden");
       adFill.style.width = "0%";
       adLink.disabled = !a.link;
+      // отсчёт идёт только пока ролик правда играет: на плохом интернете он буферизуется,
+      // и эти секунды не засчитываются — пропустить раньше времени не выйдет
+      state.adPlayed = 0; state.adLastT = null;
+      adWait.textContent = "Пропуск через: " + AD_SKIP_SEC;
+      adWait.classList.remove("hidden");
       adVid.src = a.src;
       const go = () => adVid.play().catch(() => { adVid.muted = true; adVid.play().catch(() => endAd()); });
       go();
-      clearTimeout(state.adSkipT);
-      state.adSkipT = setTimeout(() => adSkip.classList.remove("hidden"), 3000);
     }
     function endAd() {
       if (!state.ad) return;
       const back = state.ad.back;
       state.ad = null;
-      clearTimeout(state.adSkipT);
+      adWait.classList.add("hidden");
       adVid.pause();
       adEl.classList.add("hidden");
       vp.classList.remove("ad-on");
@@ -1225,13 +1738,22 @@
         e.stopPropagation();
         const l = state.ad && state.ad.link;
         if (!l) return;
-        if (tg && tg.openLink) tg.openLink(l); else window.open(l, "_blank", "noopener");
+        const twa = tg();
+        if (twa && twa.openLink) twa.openLink(l); else window.open(l, "_blank", "noopener");
       };
       adSkip.onclick = (e) => { e.stopPropagation(); endAd(); };
       adVid.addEventListener("ended", endAd);
       adVid.addEventListener("error", () => { if (state.ad) endAd(); });
       adVid.addEventListener("timeupdate", () => {
         if (adVid.duration) adFill.style.width = (adVid.currentTime / adVid.duration * 100) + "%";
+        if (state.ad && !adVid.paused) {
+          const t = adVid.currentTime;
+          if (state.adLastT !== null && t > state.adLastT) state.adPlayed += t - state.adLastT;
+          state.adLastT = t;
+          const left = Math.ceil(AD_SKIP_SEC - state.adPlayed);
+          if (left > 0) adWait.textContent = "Пропуск через: " + left;
+          else { adWait.classList.add("hidden"); adSkip.classList.remove("hidden"); }
+        }
       });
       video.addEventListener("timeupdate", () => {
         if (video.seeking) return;
@@ -1276,27 +1798,28 @@
     vp.addEventListener("touchstart", wake, { passive: true });
     vp.addEventListener("mouseleave", () => { if (!video.paused && !state.menuPage) vp.classList.add("idle"); });
 
-    // клавиатура: когда плеер в фокусе
+    // клавиатура: когда плеер в фокусе. Смотрим на e.code — физическую клавишу,
+    // поэтому горячие клавиши работают и с русской раскладкой (F = А, M = Ь и т.д.)
     vp.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT") return;
-      const k = e.key;
-      if (state.ad && k !== "Escape") { e.preventDefault(); return; }
+      const c = e.code || "";
+      if (state.ad && c !== "Escape") { e.preventDefault(); return; }
       let handled = true;
-      if (k === " " || k === "k" || k === "K") togglePlay();
-      else if (k === "ArrowRight") skip(5);
-      else if (k === "ArrowLeft") skip(-5);
-      else if (k === "l" || k === "L") skip(10);
-      else if (k === "j" || k === "J") skip(-10);
-      else if (k === "ArrowUp") setVolume(video.volume + 0.05);
-      else if (k === "ArrowDown") setVolume(video.volume - 0.05);
-      else if (k === "m" || k === "M") toggleMute();
-      else if (k === "f" || k === "F") toggleFs();
-      else if (k === "c" || k === "C") $("#vpCc").click();
-      else if (k === "p" || k === "P") togglePip();
-      else if (k === ">" || k === ".") setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(video.playbackRate) + 1)] || 2);
-      else if (k === "<" || k === ",") setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] || 0.25);
-      else if (/^[0-9]$/.test(k)) { if (dur()) seekTo((Number(k) / 10) * dur()); }
-      else if (k === "Escape") { if (state.menuPage) closeMenu(); else if (vp.classList.contains("fs")) exitFs(); }
+      if (c === "Space" || c === "KeyK") togglePlay();
+      else if (c === "ArrowRight") skip(5);
+      else if (c === "ArrowLeft") skip(-5);
+      else if (c === "KeyL") skip(10);
+      else if (c === "KeyJ") skip(-10);
+      else if (c === "ArrowUp") setVolume(video.volume + 0.05);
+      else if (c === "ArrowDown") setVolume(video.volume - 0.05);
+      else if (c === "KeyM") toggleMute();
+      else if (c === "KeyF") toggleFs();
+      else if (c === "KeyC") $("#vpCc").click();
+      else if (c === "KeyP") togglePip();
+      else if (c === "Period") setSpeed(SPEEDS[Math.min(SPEEDS.length - 1, SPEEDS.indexOf(video.playbackRate) + 1)] || 2);
+      else if (c === "Comma") setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(video.playbackRate) - 1)] || 0.25);
+      else if (/^Digit[0-9]$/.test(c)) { if (dur()) seekTo((Number(c.slice(5)) / 10) * dur()); }
+      else if (c === "Escape") { if (state.menuPage) closeMenu(); else if (vp.classList.contains("fs")) exitFs(); }
       else handled = false;
       if (handled) { e.preventDefault(); wake(); }
     });
@@ -1304,7 +1827,7 @@
     wake();
     return {
       destroy() {
-        clearTimeout(state.hideT); clearTimeout(state.clickT); clearTimeout(state.flashT); clearTimeout(state.adSkipT);
+        clearTimeout(state.hideT); clearTimeout(state.clickT); clearTimeout(state.flashT);
         clearInterval(saveTimer);
         saveProgress();
         window.removeEventListener("pagehide", saveProgress);
@@ -1326,8 +1849,9 @@
     const r = await api("/api/pay/invoice", { body: { kind, amount } });
     if (!r.ok) { toast(errText(r.data.error)); return; }
     const link = r.data.invoice;
-    if (tg && tg.openInvoice) {
-      tg.openInvoice(link, async (status) => {
+    const twa = tg();
+    if (twa && twa.openInvoice) {
+      twa.openInvoice(link, async (status) => {
         if (status === "paid") { toast("Оплата прошла"); await loadMe(); if (S.route !== "film") render(); }
       });
     } else {
@@ -1340,32 +1864,144 @@
     if (b) startPayment(b.dataset.pay, Number(b.dataset.amount || 0));
   });
 
+  // иконки для окна «Что такое VIP?»
+  const VI_ICONS = {
+    noads: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="5" width="19" height="13" rx="2.5"/><path d="M8 21h8M12 18v3M6 9.5l4 4M10 9.5l-4 4M14.5 12h4"/></svg>',
+    gradient: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-3 2-4 4-6s3-4 6-4 5 2 5 5-2 5-5 5H4z"/><circle cx="8.5" cy="8.5" r="1.6"/><circle cx="14" cy="5.5" r="1.6"/><circle cx="18.5" cy="9" r="1.6"/></svg>',
+    badge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9.5" r="6"/><path d="M12 6.2l1.1 2.2 2.4.4-1.7 1.7.4 2.4-2.2-1.2-2.2 1.2.4-2.4-1.7-1.7 2.4-.4z"/><path d="M8.5 15l-1.5 6 5-2.4 5 2.4-1.5-6"/></svg>',
+    reviews: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5A2.5 2.5 0 016 4h7a2.5 2.5 0 012.5 2.5V11a2.5 2.5 0 01-2.5 2.5H8l-3.5 2.5v-2.6A2.5 2.5 0 013.5 11z"/><path d="M17 8h1.5A2.5 2.5 0 0121 10.5V19l-3-2.2h-3.5A2.5 2.5 0 0112 14.3"/></svg>',
+    top: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5L12 5l6.5 6.5"/></svg>',
+  };
+
+  // окно «Что такое VIP?»: пункт = иконка + текст, между пунктами тонкая полупрозрачная полоса
+  function openVipInfo() {
+    const row = (icon, text) => `<div class="vi-row"><span class="vi-ico">${VI_ICONS[icon]}</span><p>${text}</p></div>`;
+    openModal("Что такое VIP?", `
+      <div class="vip-info">
+        ${row("noads", "Никакой рекламы — ролики в плеере отключены полностью, перемотка свободная.")}
+        <hr class="sep">
+        ${row("gradient", "Градиентный ник — ваш ник в отзывах и в профиле переливается выбранным градиентом.")}
+        <hr class="sep">
+        ${row("badge", "Золотая приписка VIP рядом с ником в отзывах и в профиле.")}
+        <hr class="sep">
+        ${row("reviews", "Два отзыва на одно видео вместо одного.")}
+        <hr class="sep">
+        ${row("top", "Отзывы с VIP всегда сверху — их видно первыми в списке отзывов.")}
+      </div>`, "no-line");
+  }
+
+  async function buyVipWithStars(kind) {
+    if (S.me.guest) { toast("Откройте приложение из Telegram"); return; }
+    const r = await api("/api/pay/stars", { body: { kind } });
+    if (!r.ok) { toast(errText(r.data.error)); return; }
+    toast("VIP оплачен звёздами с баланса");
+    await loadMe();
+    viewVip();
+  }
+
   function viewVip() {
     const p = S.config.prices;
-    const until = S.me.vipUntil ? fmtDate(S.me.vipUntil) : "";
+    const me = S.me;
+    const star = '<span class="star-pop">★</span>';
     app.innerHTML = `
       <h1>VIP</h1>
-      <p class="sub">VIP открывает фильмы без рекламы, качество на высоте, кучу новых фильмов в закрытом доступе!</p>
+      <p class="sub">Самое лучшее, что может быть!</p>
+      <div class="row anim-in" style="margin:-4px 0 16px">
+        ${!me.guest ? `<span class="balance-pill">Баланс: <b>${me.stars || 0}</b> ${star}</span>` : ""}
+        <button class="btn ghost small" id="vipInfoBtn">Что такое VIP?</button>
+      </div>
       <div class="plans">
-        <div class="plan">
+        <div class="plan anim-in anim-d1">
           <div>Месяц</div>
           <div class="price">${p.vipMonth} ★</div>
           <small>Доступ на 30 дней</small>
-          ${payButton("vip_month", p.vipMonth, "Купить на месяц", "btn")}
+          ${payButton("vip_month", p.vipMonth, "Купить на месяц", "btn sheen")}
+          ${!me.guest && (me.stars || 0) >= p.vipMonth ? `<button class="btn ghost" style="margin-top:8px" data-stars-buy="vip_month">Оплатить балансом</button>` : ""}
         </div>
-        <div class="plan">
+        <div class="plan anim-in anim-d2">
           <div>Год</div>
           <div class="price">${p.vipYear} ★</div>
           <small>Доступ на 365 дней. Выгоднее месячной подписки</small>
-          ${payButton("vip_year", p.vipYear, "Купить на год", "btn")}
+          ${payButton("vip_year", p.vipYear, "Купить на год", "btn sheen")}
+          ${!me.guest && (me.stars || 0) >= p.vipYear ? `<button class="btn ghost" style="margin-top:8px" data-stars-buy="vip_year">Оплатить балансом</button>` : ""}
         </div>
       </div>
-      <div class="section glass">
+      <div class="section glass anim-in anim-d3">
         <h2>Поддержать проект</h2>
         <p class="sub">Разовый донат, VIP не продлевается.</p>
         <div class="row">${S.config.donate.map((n) => payButton("donate", n, `${n} ★`, "btn ghost")).join("")}</div>
+      </div>`;
+    $("#vipInfoBtn").onclick = openVipInfo;
+    app.querySelectorAll("[data-stars-buy]").forEach((b) => {
+      b.onclick = () => buyVipWithStars(b.dataset.starsBuy);
+    });
+  }
+
+  // редактор градиентного ника (только для активного VIP)
+  const GRAD_PRESETS = [
+    "linear-gradient(90deg,#ffd700,#ff6ec7,#5eead4)",
+    "linear-gradient(90deg,#a78bfa,#5eead4,#a78bfa)",
+    "linear-gradient(90deg,#f97316,#facc15,#f97316)",
+    "linear-gradient(90deg,#ec4899,#8b5cf6,#ec4899)",
+    "radial-gradient(circle,#ffffff,#ffd700)",
+    "linear-gradient(90deg,#22d3ee,#3b82f6,#22d3ee)",
+    "linear-gradient(90deg,#fb7185,#fbbf24,#fb7185)",
+    "conic-gradient(from 0deg,#ffd700,#ff6ec7,#5eead4,#a78bfa,#ffd700)",
+  ];
+
+  function openStyleEditor() {
+    const cur = safeGrad(S.me.nameGradient || GRAD_PRESETS[0]);
+    const body = openModal("Оформление ника", `
+      <p class="hint" style="margin-top:0">Выберите градиент для ника в отзывах и профиле.</p>
+      <p style="font-size:20px;margin:8px 0">${nickHtml({ name: S.me.name || "Ваше имя", gradient: cur })} ${vipTag()}</p>
+      <div class="grad-presets" id="gradPresets">${GRAD_PRESETS.map((g, i) =>
+        `<button type="button" data-grad="${esc(g)}" class="${i === 0 ? "on" : ""}" style="background:${esc(g)}" title="Градиент ${i + 1}"></button>`).join("")}</div>
+      <div class="grad-row">
+        <input type="color" id="gradC1" value="#ffd700">
+        <input type="color" id="gradC2" value="#ff6ec7">
+        <input type="range" id="gradAngle" min="0" max="360" value="90">
+        <span class="hint" id="gradAngleVal">90°</span>
       </div>
-      ${S.me.vipActive ? `<p class="sub" style="margin-top:24px">${until ? `Ваш VIP активен до ${esc(until)}` : `Ваш VIP активен: <span class="vip-infinity">бессрочно ∞</span>`}</p>` : ""}`;
+      <div class="row" style="margin-top:14px">
+        <button class="btn sheen" id="gradSave">Сохранить</button>
+        <button class="btn ghost" id="gradReset">Сбросить</button>
+      </div>`);
+    let curGrad = cur;
+    const preview = () => {
+      const el = body.querySelector(".demo-nick") || body.querySelectorAll("p")[1];
+      if (el) { el.innerHTML = `${nickHtml({ name: S.me.name || "Ваше имя", gradient: curGrad })} ${vipTag()}`; }
+    };
+    body.querySelector("#gradPresets").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-grad]");
+      if (!b) return;
+      curGrad = b.dataset.grad;
+      body.querySelectorAll("#gradPresets button").forEach((x) => x.classList.toggle("on", x === b));
+      preview();
+    });
+    const rebuild = () => {
+      curGrad = `linear-gradient(${body.querySelector("#gradAngle").value}deg, ${body.querySelector("#gradC1").value}, ${body.querySelector("#gradC2").value})`;
+      body.querySelectorAll("#gradPresets button").forEach((x) => x.classList.remove("on"));
+      preview();
+    };
+    body.querySelector("#gradC1").oninput = rebuild;
+    body.querySelector("#gradC2").oninput = rebuild;
+    body.querySelector("#gradAngle").oninput = (e) => { body.querySelector("#gradAngleVal").textContent = e.target.value + "°"; rebuild(); };
+    body.querySelector("#gradSave").onclick = async () => {
+      const r = await api("/api/me/style", { body: { gradient: curGrad } });
+      if (!r.ok) { toast(errText(r.data.error)); return; }
+      closeModal();
+      toast("Оформление сохранено");
+      await loadMe();
+      if (S.route === "profile") viewProfile();
+    };
+    body.querySelector("#gradReset").onclick = async () => {
+      const r = await api("/api/me/style", { body: { gradient: "" } });
+      if (!r.ok) { toast(errText(r.data.error)); return; }
+      closeModal();
+      toast("Оформление сброшено");
+      await loadMe();
+      if (S.route === "profile") viewProfile();
+    };
   }
 
   async function viewProfile() {
@@ -1373,21 +2009,29 @@
       app.innerHTML = `<h1>Профиль</h1><p class="sub">Откройте приложение из Telegram, чтобы увидеть профиль.</p>`;
       return;
     }
-    const vipLine = vipStatusHtml(S.me);
-    const initial = esc(String(S.me.name || "?").trim().charAt(0).toUpperCase());
+    const me = S.me;
+    const status = statusHtml(me);
+    const initial = esc(String(me.name || "?").trim().charAt(0).toUpperCase());
+    const nameLine = me.vipActive && me.nameGradient
+      ? `<span class="nick-gradient" style="--g:${esc(safeGrad(me.nameGradient))}">${esc(me.name)}</span>`
+      : esc(me.name);
     app.innerHTML = `
-      <div class="prof-head" style="display:flex;align-items:center;gap:18px;margin-bottom:10px">
-        <span class="ava ava-lg"><b>${initial}</b><img src="/api/avatar/${esc(S.me.id)}" alt="" onerror="this.remove()"></span>
+      <div class="prof-head anim-in" style="display:flex;align-items:center;gap:18px;margin-bottom:10px">
+        <span class="ava ava-lg"><b>${initial}</b><img src="/api/avatar/${esc(me.id)}" alt="" onerror="this.remove()"></span>
         <div style="min-width:0">
-          <h1 style="margin:0 0 6px">${esc(S.me.name)}</h1>
-          <p class="sub" style="margin:0">Роль: ${esc(S.me.roleTitle)} · ${vipLine}</p>
+          <h1 style="margin:0 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${nameLine}${me.vipActive ? vipTag() : ""}</h1>
+          <p class="sub" style="margin:0">${status}</p>
         </div>
       </div>
-      <p class="sub">ID: ${esc(S.me.id)}</p>
-      <section class="section">
+      <p class="sub">ID: ${esc(me.id)}</p>
+      ${me.vipActive ? `<div class="row" style="margin:4px 0 8px"><button class="btn ghost small" id="styleEdit">✦ Оформить ник градиентом</button></div>` : ""}
+      ${!me.guest ? `<p style="margin:0 0 10px"><span class="balance-pill">Звёзды на балансе: <b>${me.stars || 0}</b></span></p>` : ""}
+      <section class="section anim-in anim-d1">
         <h2>История просмотров</h2>
         <div id="history"><div class="empty">Загрузка...</div></div>
       </section>`;
+    const se = $("#styleEdit");
+    if (se) se.onclick = openStyleEditor;
     const rows = await call("/api/me/history").catch(() => []);
     if (S.route !== "profile") return;
     $("#history").innerHTML = rows.length
@@ -1401,10 +2045,231 @@
       : '<div class="sub" style="margin:0">Вы пока ничего не смотрели</div>';
   }
 
+  // ---- поддержка: тикеты ----
+  const TK_ICON = '<svg viewBox="0 0 24 24"><path d="M4 13a8 8 0 0 1 16 0"/><rect x="2.5" y="12.5" width="4" height="6.5" rx="1.8"/><rect x="17.5" y="12.5" width="4" height="6.5" rx="1.8"/><path d="M19.5 19v.5a2.5 2.5 0 0 1-2.5 2.5h-3"/></svg>';
+  const TK_CLIP = '<svg viewBox="0 0 24 24"><path d="M20 11.5l-8 8a4.6 4.6 0 0 1-6.5-6.5l8.4-8.4a3.1 3.1 0 0 1 4.4 4.4l-8.3 8.4a1.6 1.6 0 0 1-2.2-2.2l7.6-7.6"/></svg>';
+  const TK_SEND = '<svg viewBox="0 0 24 24"><path d="M3.4 20.4l17.5-7.6a1 1 0 0 0 0-1.8L3.4 3.4a1 1 0 0 0-1.4 1.1l1.9 6.6a1 1 0 0 0 .8.7l6.3.9-6.3.9a1 1 0 0 0-.8.7l-1.9 6.6a1 1 0 0 0 1.4 1.1z"/></svg>';
+  const TK_STAFF = ["operator", "editor", "admin", "owner"];
+  const isStaff = () => TK_STAFF.includes(S.me.role);
+  function tkTime(v) {
+    const d = new Date(String(v || "").replace(" ", "T") + "Z");
+    return isNaN(d) ? String(v || "") : d.toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // карточка тикета: слева номер в очереди, справа важность
+  function ticketCard(t) {
+    const staff = isStaff();
+    const waiting = t.assignee === "operator";
+    const colored = staff && !waiting;      // переданные админам подсвечены по важности
+    return `<a class="tk-card${colored ? " " + esc(t.kind) : ""}" href="#/support/${t.id}">
+        <span class="tk-num">${staff && waiting ? (t.queue || "—") : "#" + t.id}</span>
+        <span class="tk-body"><b>${esc(t.text)}</b>
+          <small>${staff && !t.mine ? esc(t.author) + " · " : ""}Подан: ${esc(tkTime(t.createdAt))}</small></span>
+        <span class="tk-kind">${esc(t.kindTitle)}</span>
+      </a>`;
+  }
+
+  async function viewSupport(id) {
+    if (id) return viewTicketChat(id);
+    if (S.me.guest) {
+      app.innerHTML = `<h1>Поддержка</h1><p class="sub">Откройте приложение из Telegram, чтобы написать нам.</p>`;
+      return;
+    }
+    // у персонала это рабочая панель тикетов, кнопка «Новый тикет» ему не нужна
+    app.innerHTML = isStaff() ? `
+      <h1>Тикеты</h1>
+      <p class="sub">Обращения пользователей. Нажмите на тикет, чтобы ответить.</p>
+      <div id="tkWork"></div>
+      <div id="tkMine"></div>` : `
+      <h1>Поддержка</h1>
+      <p class="sub">Опишите, что случилось или что добавить. Оператор ответит в чате тикета.</p>
+      <div class="row" style="margin:-8px 0 20px"><button class="btn sheen" id="tkNew">Новый тикет</button></div>
+      <div id="tkWork"></div>
+      <div id="tkMine"></div>`;
+    const nb = $("#tkNew");
+    if (nb) nb.onclick = openTicketForm;
+    await drawTickets();
+  }
+
+  // список тикетов: у персонала — рабочие, у всех — свои
+  async function drawTickets() {
+    const data = await call("/api/tickets").catch(() => null);
+    if (!data || S.route !== "support") return;
+    S.ticketKinds = data.kinds || [];
+    const work = $("#tkWork"), mine = $("#tkMine");
+    if (!work || !mine) return;
+    const mineList = data.tickets.filter((t) => t.mine);
+    if (isStaff()) {
+      // сначала те, что ждут у операторов (по очереди), потом переданные админам
+      const list = data.tickets.filter((t) => !t.mine);
+      list.sort((a, b) => (a.assignee === b.assignee ? a.id - b.id : a.assignee === "operator" ? -1 : 1));
+      work.innerHTML = list.length
+        ? `<h2>Тикеты</h2>${list.map(ticketCard).join("")}`
+        : '<div class="empty">Тикетов пока нет</div>';
+    } else work.innerHTML = "";
+    mine.innerHTML = mineList.length ? `<h2>Мои тикеты</h2>${mineList.map(ticketCard).join("")}` : "";
+  }
+
+  function openTicketForm() {
+    const kinds = S.ticketKinds.length ? S.ticketKinds : [{ id: "bug", title: "Баг" }];
+    const body = openModal("Новый тикет", `
+      <label class="field"><span>Критичность</span>
+        <select id="tkKind">${kinds.map((k) => `<option value="${esc(k.id)}">${esc(k.title)}</option>`).join("")}</select></label>
+      <label class="field"><span>Опишите подробнее</span>
+        <textarea id="tkText" maxlength="2000" placeholder="Что случилось или что добавить"></textarea></label>
+      <button class="btn sheen" id="tkSend" style="display:block;width:100%">Отправить</button>`);
+    body.querySelector("#tkSend").onclick = async () => {
+      const text = body.querySelector("#tkText").value.trim();
+      if (!text) { toast("Опишите, что случилось"); return; }
+      const r = await api("/api/tickets", { body: { kind: body.querySelector("#tkKind").value, text } });
+      if (!r.ok) { toast(errText(r.data.error)); return; }
+      closeModal();
+      toast(r.data.answer || "Тикет отправлен");
+      await drawTickets();
+    };
+  }
+
+  // сообщение в чате: персонал отвечает от имени Оператора
+  function tkMsgHtml(t, m) {
+    const who = m.mine ? "Вы" : (m.role === "user" ? esc(t.author) : "Оператор");
+    const shot = m.image ? `<img class="tk-shot" src="${esc(authSrc(m.image))}" alt="Картинка к тикету">` : "";
+    return `<div class="tk-msg${m.mine ? " me" : ""}">
+        <div class="who">${who} · ${esc(tkTime(m.date))}</div>
+        ${m.text ? `<p>${esc(m.text)}</p>` : ""}${shot}</div>`;
+  }
+
+  async function viewTicketChat(id) {
+    if (S.me.guest) { app.innerHTML = '<div class="empty">Откройте приложение из Telegram</div>'; return; }
+    // тянем один тикет, а не весь список с чужой перепиской: так чат открывается быстрее
+    const t = await call(`/api/tickets/${id}`).catch(() => null);
+    if (!t || !t.id) { app.innerHTML = '<div class="empty">Тикет не найден</div>'; return; }
+    app.innerHTML = `
+      <div class="tk-head">${TK_ICON}<b>Оператор</b><span class="tk-id">#${t.id}</span></div>
+      <div class="tk-msgs" id="tkMsgs">
+        <div class="tk-msg"><div class="who">${t.mine ? "Вы" : esc(t.author)} · ${esc(tkTime(t.createdAt))}</div><p>${esc(t.text)}</p></div>
+        ${t.messages.map((m) => tkMsgHtml(t, m)).join("")}
+      </div>
+      <div class="tk-acts">
+        ${t.canTransfer ? `<button class="btn ghost small" id="tkUp">Передать админам</button>` : ""}
+        ${S.me.canManage && t.assignee === "staff" ? `<button class="btn ghost small" id="tkDown">Вернуть операторам</button>` : ""}
+        ${t.canClose && !t.closed ? `<button class="btn ghost small" id="tkClose">Закрыть</button>` : ""}
+        ${t.canDelete ? `<button class="btn danger small" id="tkDel">Удалить тикет</button>` : ""}
+      </div>
+      ${t.closed
+        ? '<p class="sub" style="margin:0 0 118px">Тикет закрыт. Через 10 минут он удалится.</p>'
+        : `<div class="tk-dock">
+        <div class="tk-pick hidden" id="tkPick">
+          <img id="tkPickImg" alt="Картинка к сообщению">
+          <button id="tkPickX" aria-label="Убрать картинку" title="Убрать картинку">&times;</button>
+        </div>
+        <div class="tk-input">
+          <button class="tk-clip" id="tkClip" aria-label="Прикрепить картинку" title="Прикрепить картинку">${TK_CLIP}</button>
+          <textarea id="tkReply" rows="1" maxlength="2000" placeholder="Сообщение"></textarea>
+          <button class="tk-go" id="tkSendMsg" aria-label="Отправить" title="Отправить">${TK_SEND}</button>
+        </div>
+      </div>`}`;
+    const msgs = $("#tkMsgs");
+    const toBottom = () => window.scrollTo({ top: document.body.scrollHeight });
+    toBottom();
+
+    // кнопки действий привязываются и к закрытому тикету: закрыл — потом можно удалить сразу
+    const cl = $("#tkClose");
+    if (cl) cl.onclick = async () => {
+      if (!confirm("Закрыть тикет? Он закроется у обеих сторон и через 10 минут удалится.")) return;
+      await call(`/api/tickets/${t.id}/close`, { body: {} }).catch(() => null);
+      toast("Тикет закрыт");
+      go("#/support");
+    };
+    const up = $("#tkUp"), down = $("#tkDown"), del = $("#tkDel");
+    if (up) up.onclick = async () => {
+      await call(`/api/tickets/${t.id}/transfer`, { body: { to: "staff" } }).catch(() => null);
+      toast("Тикет передан админам");
+      go("#/support");
+    };
+    if (down) down.onclick = async () => {
+      await call(`/api/tickets/${t.id}/transfer`, { body: { to: "operator" } }).catch(() => null);
+      toast("Тикет возвращён операторам");
+      go("#/support");
+    };
+    // «Удалить» стирает тикет из базы сразу, вместе с перепиской и картинками
+    if (del) del.onclick = async () => {
+      if (!confirm("Удалить тикет сейчас? Он удалится сразу, вместе с перепиской.")) return;
+      const r = await api(`/api/tickets/${t.id}/delete`, { body: {} });
+      if (!r.ok) { toast(errText(r.data.error)); return; }
+      toast("Тикет удалён");
+      go("#/support");
+    };
+
+    if (t.closed) return;   // у закрытого тикета нет поля ввода и скрепки
+
+    const pick = $("#tkPick"), box = $("#tkReply");
+
+    // Картинка читается в base64 и ждёт отправки в памяти: чуть выше поля ввода видно,
+    // что именно уйдёт, а крестик убирает её до отправки. На сервер она уходит только
+    // вместе с сообщением, поэтому лишних файлов в тикете не остаётся.
+    let shot = null;
+    const dropShot = () => {
+      shot = null;
+      pick.classList.add("hidden");
+      $("#tkPickImg").removeAttribute("src");
+    };
+    const takeShot = (file) => {
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { toast("Можно прикрепить только картинку"); return; }
+      const fr = new FileReader();
+      fr.onload = () => {
+        shot = String(fr.result);
+        $("#tkPickImg").src = shot;
+        pick.classList.remove("hidden");
+      };
+      fr.onerror = () => toast("Не удалось прочитать картинку");
+      fr.readAsDataURL(file);
+    };
+    $("#tkClip").onclick = () => {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = "image/*";
+      inp.onchange = () => takeShot(inp.files && inp.files[0]);
+      inp.click();
+    };
+    $("#tkPickX").onclick = dropShot;
+    box.addEventListener("paste", (e) => {
+      const item = [...(e.clipboardData && e.clipboardData.items || [])].find((i) => i.type.startsWith("image/"));
+      if (item) { e.preventDefault(); takeShot(item.getAsFile()); }
+    });
+
+    const send = async () => {
+      const text = box.value.trim();
+      if (!text && !shot) return;
+      let image = null;
+      if (shot) {                                    // base64 уходит отдельным запросом
+        const upl = await api(`/api/tickets/${t.id}/images`, { body: { image: shot } });
+        if (!upl.ok) { toast(errText(upl.data.error)); return; }
+        image = upl.data.name;
+      }
+      const r = await api(`/api/tickets/${t.id}/messages`, { body: { text, image } });
+      if (!r.ok) {
+        toast(r.data.error === "user_left" ? "Пользователь ушёл из бота, тикет удалён" : errText(r.data.error));
+        if (r.data.error === "user_left") return go("#/support");
+        return;
+      }
+      // добавляем только новое сообщение: экран не перерисовывается целиком
+      box.value = "";
+      dropShot();
+      t.messages.push(r.data.message);
+      msgs.insertAdjacentHTML("beforeend", tkMsgHtml(t, r.data.message));
+      toBottom();
+    };
+    $("#tkSendMsg").onclick = send;
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  }
+
   // ---- админ-панель ----
   async function viewAdmin(r) {
     const tab = r.tab || "films";
-    const tabs = [["films", "Фильмы"], ["upload", "Загрузить"]];
+    const tabs = [["films", "Каталог"], ["upload", "Загрузить"]];
     if (S.me.canManage) tabs.push(["ads", "Реклама"], ["users", "Пользователи"]);
     if (S.me.isOwner) tabs.push(["sales", "Продажи"]);
     app.innerHTML = `<h1>Админ-панель</h1>
@@ -1425,27 +2290,27 @@
     const box = $("#admin");
     box.innerHTML = '<div class="empty">Загрузка...</div>';
     const films = await call("/api/admin/films").catch(() => []);
-    if (!films.length) { box.innerHTML = '<div class="empty">Фильмов пока нет</div>'; return; }
-    box.innerHTML = films.map((f) => `
+    if (!films.length) { box.innerHTML = '<div class="empty">Пока ничего нет</div>'; return; }
+    box.innerHTML = `<div class="glass adm-card"><h2>Каталог<small>Всего записей: ${films.length}</small></h2>` + films.map((f) => `
       <div class="list-row">
         <div class="thumb">${f.hasPoster ? `<img src="/api/films/${f.id}/poster" alt="">` : ""}</div>
         <div class="info">
           <b>${esc(f.title)}</b>
-          <small>${f.kind === "video" ? "Видео" : "Ссылка"} · ${statusPill(f)} ${f.isVip ? '<span class="pill">VIP</span>' : ""} ${f.isActive ? "" : '<span class="pill bad">Скрыт</span>'}</small>
+          <small>${f.kind === "video" ? "Видео" : f.kind === "series" ? "Сериал" : "Ссылка"} · ${statusPill(f)} ${f.isVip ? '<span class="pill">VIP</span>' : ""} ${f.isActive ? "" : '<span class="pill bad">Скрыт</span>'}</small>
           ${f.error ? `<small style="display:block;color:#fca5a5">${esc(f.error)}</small>` : ""}
         </div>
         <button class="btn ghost small" data-edit="${f.id}">Изменить</button>
         ${f.kind === "video" && f.status !== "processing" ? `<button class="btn ghost small" data-redo="${f.id}">Заново</button>` : ""}
         <button class="btn danger small" data-del="${f.id}">Удалить</button>
       </div>
-      ${String(f.id) === String(editId) ? editForm(f) : ""}`).join("");
+      ${String(f.id) === String(editId) ? editForm(f) : ""}`).join("") + `</div>`;
     box.onclick = async (e) => {
       const t = (sel) => e.target.closest(sel);
       if (t("[data-edit]")) return go(`#/admin/film/${t("[data-edit]").dataset.edit}`);
       if (t("[data-redo]")) { await call(`/api/admin/films/${t("[data-redo]").dataset.redo}/reprocess`, { body: {} }).catch(() => null); toast("Поставлено в очередь"); return adminFilms(); }
-      if (t("[data-del]") && confirm("Удалить фильм вместе с файлами?")) {
+      if (t("[data-del]") && confirm("Удалить вместе с файлами?")) {
         await call(`/api/admin/films/${t("[data-del]").dataset.del}/delete`, { body: {} }).catch(() => null);
-        toast("Фильм удалён"); return adminFilms();
+        toast("Удалено"); return adminFilms();
       }
       if (t("[data-save]")) return saveEdit(t("[data-save]").dataset.save);
       if (t("[data-subadd]")) return addSubtitle(t("[data-subadd]").dataset.subadd);
@@ -1461,27 +2326,26 @@
     }
   }
 
-  // редактор серий сериала: список по сезонам, удаление и добавление серии
+  // редактор серий сериала: плоский список по номерам, удаление и добавление серии
   function seriesEditor(f) {
     const eps = f.episodes || [];
-    const seasons = {};
-    eps.forEach((e) => { (seasons[e.season] = seasons[e.season] || []).push(e); });
-    const seasonNums = Object.keys(seasons).map(Number).sort((a, b) => a - b);
-    const lastSeason = seasonNums.length ? seasonNums[seasonNums.length - 1] : 1;
-    const lastEp = eps.filter((e) => e.season === lastSeason).reduce((m, e) => Math.max(m, e.episode), 0);
-    const list = seasonNums.length ? seasonNums.map((sn) => `<h2 style="margin-top:18px">Сезон ${sn}</h2>` +
-      seasons[sn].sort((a, b) => a.episode - b.episode).map((e) => `<div class="list-row">
+    const lastEp = eps.reduce((m, e) => Math.max(m, e.episode), 0);
+    const list = eps.length ? eps.slice().sort((a, b) => a.episode - b.episode).map((e) => `<div class="list-row">
         <div class="info"><b>Серия ${e.episode}${e.title ? " · " + esc(e.title) : ""}</b>
         <small>${e.status === "ready" ? "готово" : e.status === "processing" ? "обработка" : "ошибка"}</small></div>
-        <button class="btn ghost small" data-epdel="${e.id}">Удалить</button></div>`).join("")).join("")
+        <button class="btn ghost small" data-epdel="${e.id}">Удалить</button></div>`).join("")
       : '<p class="hint">Серий пока нет.</p>';
     return `<h2 style="margin-top:22px">Серии</h2>${list}
       <h2 style="margin-top:22px">Добавить серию</h2>
-      <div class="row">
-        <label class="field" style="flex:1"><span>Сезон</span><input type="number" id="ep-season" min="1" max="99" value="${lastSeason}"></label>
-        <label class="field" style="flex:1"><span>Серия</span><input type="number" id="ep-number" min="1" max="999" value="${lastEp + 1}"></label>
-      </div>
+      <label class="field"><span>Номер серии</span><input type="number" id="ep-number" min="1" max="999" value="${lastEp + 1}"></label>
       <label class="field"><span>Название серии (необязательно)</span><input type="text" id="ep-title" maxlength="120"></label>
+      <label class="field"><span>Жанр серии</span>
+        <select id="ep-genre">
+          <option value="anime" selected>Аниме</option>
+          <option value="cartoon">Мультфильмы</option>
+        </select>
+        <span class="hint">Жанр у серии свой: показывается рядом с её названием.</span>
+      </label>
       <label class="field"><span>Видеофайл</span><input type="file" id="ep-file" accept="video/*"></label>
       <div class="progress" id="ep-progress"><div></div></div>
       <button class="btn small" data-epadd="${f.id}">Добавить серию</button>`;
@@ -1502,17 +2366,17 @@
     const file = $("#ep-file").files[0];
     if (!file) { toast("Выберите видеофайл серии"); return; }
     if (file.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
-    const season = Number($("#ep-season").value), episode = Number($("#ep-number").value);
-    if (!season || !episode) { toast("Укажите сезон и номер серии"); return; }
+    const episode = Number($("#ep-number").value);
+    if (!episode) { toast("Укажите номер серии"); return; }
     add.disabled = true;
     try {
       const uid = await uploadVideoChunked(file, $("#ep-progress"));
       const fd = new FormData();
       fd.append("kind", "video");
       fd.append("seriesId", seriesId);
-      fd.append("season", String(season));
       fd.append("episode", String(episode));
       fd.append("title", $("#ep-title").value.trim() || `Серия ${episode}`);
+      fd.append("genre", $("#ep-genre").value);
       fd.append("uploadId", uid);
       await upload("/api/admin/films", fd, null);
       toast("Серия добавлена, идёт обработка");
@@ -1526,7 +2390,8 @@
       ? `<div class="chips">${subs.map((l) => `<span class="chip">${esc(l.toUpperCase())}<button data-subdel="${esc(l)}" data-film="${f.id}" aria-label="Удалить">×</button></span>`).join("")}</div>`
       : '<p class="hint">Субтитров пока нет. Встроенные дорожки из видео добавляются при обработке.</p>';
     const subForm = f.kind === "video" ? `
-      <h2 style="margin-top:22px">Субтитры</h2>
+      <div class="adm-sec">
+      <h3>Субтитры</h3>
       ${subChips}
       <label class="field"><span>Язык</span>
         <select id="sub-lang-${f.id}">
@@ -1536,20 +2401,36 @@
         </select></label>
       <label class="field"><span>Файл субтитров (SRT, VTT, ASS, SSA)</span><input type="file" id="sub-file-${f.id}" accept=".srt,.vtt,.ass,.ssa,.sub"></label>
       <div class="progress" id="sub-progress-${f.id}"><div></div></div>
-      <button class="btn ghost small" data-subadd="${f.id}">Загрузить субтитры</button>` : "";
+      <button class="btn ghost small" data-subadd="${f.id}">Загрузить субтитры</button></div>` : "";
     return `<div class="glass" style="margin:6px 0 22px" id="edit-${f.id}">
       <h2>Редактирование</h2>
-      <label class="field"><span>Название</span><input type="text" id="e-title" value="${esc(f.title)}" maxlength="120"></label>
-      <label class="field"><span>Описание</span><textarea id="e-desc" maxlength="4000">${esc(f.description)}</textarea></label>
-      <label class="field"><span>Дата выхода</span><input type="date" id="e-date" value="${esc(f.releaseDate)}"></label>
-      <label class="field"><span>Автор</span><input type="text" id="e-creator" value="${esc(f.creator)}" maxlength="120"></label>
-      <label class="field"><span>Страна</span><input type="text" id="e-country" value="${esc(f.country || "")}" maxlength="80"></label>
-      ${f.kind === "link" ? `<label class="field"><span>Ссылка</span><input type="url" id="e-url" value="${esc(f.url || "")}"></label>` : ""}
-      <label class="field"><span>Обложка</span><input type="file" id="posterInput" accept="image/*"></label>
-      <label class="check"><input type="checkbox" id="e-vip" ${f.isVip ? "checked" : ""}> Фильм только для VIP</label>
-      <label class="check" style="margin-top:10px"><input type="checkbox" id="e-active" ${f.isActive ? "checked" : ""}> Показывать в каталоге</label>
+      <div class="adm-sec">
+        <h3>Основное</h3>
+        <label class="field"><span>Название</span><input type="text" id="e-title" value="${esc(f.title)}" maxlength="120"></label>
+        <label class="field" style="margin:0"><span>Описание</span><textarea id="e-desc" maxlength="4000">${esc(f.description)}</textarea></label>
+      </div>
+      <div class="adm-sec">
+        <h3>Детали</h3>
+        <div class="adm-grid">
+          <label class="field"><span>Дата выхода</span><input type="date" id="e-date" value="${esc(f.releaseDate)}"></label>
+          <label class="field"><span>Автор</span><input type="text" id="e-creator" value="${esc(f.creator)}" maxlength="120"></label>
+          <label class="field"><span>Страна</span><input type="text" id="e-country" value="${esc(f.country || "")}" maxlength="80"></label>
+          <label class="field"><span>Жанр</span>
+            <select id="e-genre">
+              ${GENRE_IDS.map((g) => `<option value="${g}" ${f.genre === g ? "selected" : ""}>${esc(GENRE_LABELS[g] || g)}</option>`).join("")}
+            </select>
+          </label>
+        </div>
+        ${f.kind === "link" ? `<label class="field" style="margin:0"><span>Ссылка</span><input type="url" id="e-url" value="${esc(f.url || "")}"></label>` : ""}
+      </div>
+      <div class="adm-sec">
+        <h3>Обложка и доступ</h3>
+        <label class="field"><span>Обложка</span><input type="file" id="posterInput" accept="image/*"></label>
+        <label class="check"><input type="checkbox" id="e-vip" ${f.isVip ? "checked" : ""}> Только для VIP</label>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="e-active" ${f.isActive ? "checked" : ""}> Показывать в каталоге</label>
+      </div>
       ${subForm}
-      ${f.kind === "series" ? seriesEditor(f) : ""}
+      ${f.kind === "series" ? `<div class="adm-sec">${seriesEditor(f)}</div>` : ""}
       <div class="row" style="margin-top:20px">
         <button class="btn" data-save="${f.id}">Сохранить</button>
         <button class="btn ghost" onclick="location.hash='#/admin'">Закрыть</button>
@@ -1562,6 +2443,7 @@
       title: $("#e-title").value, description: $("#e-desc").value, releaseDate: $("#e-date").value,
       creator: $("#e-creator").value, country: $("#e-country").value, isVip: $("#e-vip").checked, isActive: $("#e-active").checked,
     };
+    if ($("#e-genre")) body.genre = $("#e-genre").value;
     if ($("#e-url")) body.url = $("#e-url").value;
     const r = await call(`/api/admin/films/${id}/update`, { body }).catch(() => null);
     if (r) { toast("Сохранено"); adminFilms(); }
@@ -1586,7 +2468,9 @@
     } catch (_) {}
   }
 
-  // видео уходит частями по 8 МБ: каждая часть — короткий запрос с повторами при обрыве сети
+  // видео уходит частями (размер приходит с сервера, 2 МБ): каждая часть — короткий запрос
+  // с повторами при обрыве сети; между частями короткая передышка, чтобы компьютер
+  // и канал не были забиты непрерывной отдачей
   async function uploadVideoChunked(file, progressEl) {
     const init = await call("/api/admin/uploads", { body: { size: file.size, name: file.name } });
     if (progressEl) { progressEl.style.display = "block"; progressEl.firstElementChild.style.width = "0%"; }
@@ -1604,8 +2488,9 @@
         } catch (_) { /* сеть оборвалась, повторим */ }
         if (!ok) await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
       }
-      if (!ok) { toast("Загрузка прервалась. Проверьте сеть и нажмите «Добавить фильм» снова"); throw new Error("chunk"); }
+      if (!ok) { toast("Загрузка прервалась. Проверьте сеть и нажмите «Добавить» снова"); throw new Error("chunk"); }
       if (progressEl) progressEl.firstElementChild.style.width = Math.round(((i + 1) / init.total) * 100) + "%";
+      await new Promise((res) => setTimeout(res, 50));   // передышка между частями
     }
     return init.id;
   }
@@ -1642,27 +2527,46 @@
   }
 
   function adminUpload() {
-    $("#admin").innerHTML = `<div class="glass">
-      <label class="field"><span>Тип</span>
-        <select id="u-kind"><option value="video">Загрузить видео</option><option value="series">Сериал (карточка, серии добавляются потом)</option></select></label>
-      <div id="u-video">
-        <label class="field"><span>Видеофайл</span><input type="file" id="u-file" accept="video/*"></label>
-        <p class="hint">Максимум 2 ГБ. Видео сразу открывается для просмотра, как только готово первое качество (144p), остальные качества докачиваются в фоне.</p>
+    $("#admin").innerHTML = `
+      <div class="glass adm-card">
+        <h2>Что добавляем</h2>
+        <label class="field"><span>Тип</span>
+          <select id="u-kind"><option value="video">Загрузить видео</option><option value="series">Сериал (карточка, серии добавляются потом)</option></select></label>
+        <div id="u-video">
+          <label class="field"><span>Видеофайлы</span><input type="file" id="u-file" accept="video/*" multiple></label>
+          <p class="hint">Можно выбрать сразу несколько: они загружаются по очереди, по одному —
+          без ошибок и без нагрузки на компьютер. Максимум 2 ГБ на файл. Собираются два качества —
+          240p и 720p; видео открывается, когда готовы оба.</p>
+          <div class="progress" id="u-progress"><div></div></div>
+          <p class="hint" id="u-prognote" style="margin-top:6px"></p>
+        </div>
       </div>
-      <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
-      <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
-      <label class="field"><span>Дата выхода</span><input type="date" id="u-date"></label>
-      <label class="field"><span>Автор</span><input type="text" id="u-creator" maxlength="120"></label>
-      <label class="field"><span>Страна</span><input type="text" id="u-country" maxlength="80"></label>
-      <label class="field"><span>Обложка</span><input type="file" id="u-poster" accept="image/*"></label>
-      <label class="check"><input type="checkbox" id="u-vip"> Фильм только для VIP</label>
-      <div class="progress" id="u-progress"><div></div></div>
-      <div class="row" style="margin-top:20px"><button class="btn" id="u-send">Добавить фильм</button></div>
-    </div>`;
+      <div class="glass adm-card">
+        <h2>Основное</h2>
+        <label class="field"><span>Название</span><input type="text" id="u-title" maxlength="120"></label>
+        <label class="field"><span>Описание</span><textarea id="u-desc" maxlength="4000"></textarea></label>
+        <div class="adm-grid">
+          <label class="field"><span>Дата выхода</span><input type="date" id="u-date"></label>
+          <label class="field"><span>Автор</span><input type="text" id="u-creator" maxlength="120"></label>
+          <label class="field"><span>Страна</span><input type="text" id="u-country" maxlength="80"></label>
+          <label class="field"><span>Жанр</span>
+            <select id="u-genre">
+              <option value="anime" selected>Аниме</option>
+              <option value="cartoon">Мультфильмы</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint" style="margin:0">Жанр показывается на карточке в каталоге и рядом с названием.</p>
+      </div>
+      <div class="glass adm-card">
+        <h2>Обложка и доступ</h2>
+        <label class="field"><span>Обложка</span><input type="file" id="u-poster" accept="image/*"></label>
+        <label class="check" style="margin:0"><input type="checkbox" id="u-vip"> Только для VIP</label>
+      </div>
+      <div class="row" style="margin-top:20px"><button class="btn" id="u-send">Добавить</button></div>`;
     const kind = $("#u-kind");
     kind.onchange = () => {
       $("#u-video").classList.toggle("hidden", kind.value !== "video");
-      $("#u-poster").closest("label").classList.toggle("hidden", false);
     };
     $("#u-send").onclick = async () => {
       if (kind.value === "series") {
@@ -1673,6 +2577,7 @@
           const series = await call("/api/admin/series", { body: {
             title, description: $("#u-desc").value, releaseDate: $("#u-date").value,
             creator: $("#u-creator").value, country: $("#u-country").value, isVip: $("#u-vip").checked,
+            genre: $("#u-genre").value,
           } });
           const p = $("#u-poster").files[0];
           if (p) await uploadPoster(series.id, p).catch(() => null);
@@ -1681,30 +2586,36 @@
         } catch (_) { $("#u-send").disabled = false; }
         return;
       }
-      const fd = new FormData();
-      fd.append("kind", kind.value);
-      fd.append("title", $("#u-title").value.trim());
-      fd.append("description", $("#u-desc").value);
-      fd.append("releaseDate", $("#u-date").value);
-      fd.append("creator", $("#u-creator").value);
-      fd.append("country", $("#u-country").value);
-      fd.append("isVip", $("#u-vip").checked ? "1" : "0");
-      if (kind.value === "video") {
-        const f = $("#u-file").files[0];
-        if (!f) { toast("Выберите видеофайл"); return; }
-        if (f.size > MAX_UPLOAD) { toast("Файл больше 2 ГБ"); return; }
-        $("#u-send").disabled = true;
-        try {
-          fd.append("uploadId", await uploadVideoChunked(f, $("#u-progress")));
-        } catch (_) { $("#u-send").disabled = false; return; }
-      }
-      const p = $("#u-poster").files[0];
-      if (p) fd.append("poster", p, p.name);
+      // несколько видео уходят в очередь по одному: без параллельной отдачи нет
+      // ни обрывов, ни нагрузки на компьютер, а сервер и так обрабатывает по одному
+      const files = [...$("#u-file").files];
+      if (kind.value === "video" && !files.length) { toast("Выберите видеофайл"); return; }
+      for (const f of files) if (f.size > MAX_UPLOAD) { toast(`«${f.name}» больше 2 ГБ`); return; }
+      const note = $("#u-prognote");
       $("#u-send").disabled = true;
+      let last = null, done = 0;
       try {
-        const film = await upload("/api/admin/films", fd, null);
-        toast("Фильм добавлен");
-        go(`#/admin/film/${film.id}`);
+        for (const f of files) {
+          const fd = new FormData();
+          fd.append("kind", kind.value);
+          // один файл — название из поля; несколько — из имени файла, поправится в редакторе
+          fd.append("title", files.length === 1 && $("#u-title").value.trim()
+            ? $("#u-title").value.trim() : f.name.replace(/\.[^.]+$/, ""));
+          fd.append("description", $("#u-desc").value);
+          fd.append("releaseDate", $("#u-date").value);
+          fd.append("creator", $("#u-creator").value);
+          fd.append("country", $("#u-country").value);
+          fd.append("genre", $("#u-genre").value);
+          fd.append("isVip", $("#u-vip").checked ? "1" : "0");
+          if (note) note.textContent = `Файл ${done + 1} из ${files.length}: ${f.name}`;
+          fd.append("uploadId", await uploadVideoChunked(f, $("#u-progress")));
+          const p = files.length === 1 ? $("#u-poster").files[0] : null;
+          if (p) fd.append("poster", p, p.name);
+          last = await upload("/api/admin/films", fd, null);
+          done++;
+        }
+        toast(done === 1 ? "Добавлено" : `Добавлено фильмов: ${done}`);
+        go(`#/admin/film/${last.id}`);
       } catch (_) {
         $("#u-send").disabled = false;
       }
@@ -1726,11 +2637,12 @@
         <div class="info"><b>${esc(fmtClock(a.startSec))}</b><small>${a.link ? esc(a.link) : "Без ссылки"}</small></div>
         <button class="btn ghost small" data-ad-del="${a.id}">Удалить</button>
       </div>`).join("");
-    box.innerHTML = `<div class="glass">
-      <h2>Реклама</h2>
-      <p class="sub">Ролик загружается без обработки. Показывается пользователям без VIP-доступа (персонал и реальные VIP-подписчики рекламу не видят), когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</p>
+    box.innerHTML = `<div class="glass adm-card">
+      <h2>Реклама<small>Ролик загружается без обработки. Показывается пользователям без VIP-доступа (персонал и реальные VIP-подписчики рекламу не видят), когда просмотр доходит до указанной минуты и секунды. Если зритель перемотал мимо, ролик включится через 10–20 секунд после места, с которого он продолжил просмотр.</small></h2>
       <div id="ad-list">${rows || '<div class="sub" style="margin:0">Роликов пока нет</div>'}</div>
-      <h2 style="margin-top:24px">Добавить ролик</h2>
+    </div>
+    <div class="glass adm-card">
+      <h2>Добавить ролик</h2>
       <label class="field"><span>Ролик (видео)</span><input type="file" id="adFile" accept="video/*"></label>
       <label class="field"><span>Начало показа (мм:сс)</span><input type="text" id="adTime" placeholder="10:00" maxlength="7"></label>
       <label class="field"><span>Ссылка (необязательно)</span><input type="url" id="adLinkInput" placeholder="https://" maxlength="500"></label>
@@ -1765,19 +2677,48 @@
   async function adminUsers() {
     const box = $("#admin");
     const isOwner = S.me.isOwner;
-    const roleName = { user: "Пользователь", editor: "Редактор", admin: "Админ", owner: "Владелец" };
+    const roleName = { user: "Пользователь", operator: "Оператор", editor: "Редактор", admin: "Админ", owner: "Владелец" };
+    // звёзды начисляются прямо в строке пользователя: поле суммы и кнопка «Начислить»
     box.innerHTML = `<div class="row" style="margin-bottom:16px"><input type="search" id="uq" placeholder="ID, имя или @username" style="flex:1"></div>
       <div id="ulist"></div>`;
     const draw = async () => {
       const users = await call("/api/admin/users?q=" + encodeURIComponent($("#uq").value.trim())).catch(() => []);
       $("#ulist").innerHTML = users.length ? users.map((u) => {
-        const roleOpts = isOwner ? ["user", "editor", "admin"] : ["user", "editor"];
-        return `<div class="list-row">
-          <div class="info"><b>${esc(u.name)}</b><small>${u.id} · ${roleName[u.role] || u.role} · ${u.vipActive ? "VIP до " + esc(fmtDate(u.vipUntil)) : "без VIP"}</small></div>
-          ${u.role === "owner" ? "" : `<select data-role="${u.id}" style="width:auto;padding:8px 12px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${roleName[r]}</option>`).join("")}</select>`}
-          ${u.role === "owner" ? "" : `<button class="btn ghost small" data-vip="${u.id}" data-days="30">VIP 30</button>
-          <button class="btn ghost small" data-vip="${u.id}" data-days="365">VIP 365</button>
-          ${u.vipActive ? `<button class="btn danger small" data-vip="${u.id}" data-days="-30">Отозвать 30</button>` : ""}`}
+        const roleOpts = isOwner ? ["user", "operator", "editor", "admin"] : ["user", "operator", "editor"];
+        const vipPill = u.vipForever
+          ? `<span class="pill">VIP <span class="vip-infinity">∞</span></span>`
+          : u.vipActive ? `<span class="pill">VIP до ${esc(fmtDate(u.vipUntil))}</span>` : "";
+        return `<div class="list-row" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
+            <div class="info" style="flex:1"><b>${esc(u.name)}</b><small>ID ${u.id}</small></div>
+            <span class="row" style="gap:6px;flex-wrap:wrap">
+              <span class="pill">${roleName[u.role] || u.role}</span>${vipPill}<span class="pill">${u.stars || 0} ★</span>
+              ${u.banned ? '<span class="pill bad">Забанен</span>' : ""}
+            </span>
+          </div>
+          ${u.role === "owner" ? "" : `
+          <div class="adm-sec"><h3>Роль</h3>
+            <select data-role="${u.id}" style="max-width:220px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${roleName[r]}</option>`).join("")}</select>
+          </div>
+          <div class="adm-sec"><h3>VIP</h3>
+            <span class="row" style="gap:6px;flex-wrap:wrap">
+              <button class="btn ghost small" data-vip="${u.id}" data-days="1">1 день</button>
+              <button class="btn ghost small" data-vip="${u.id}" data-days="30">30 дней</button>
+              <button class="btn ghost small" data-vip="${u.id}" data-days="365">365 дней</button>
+              <button class="btn ghost small" data-vip-forever="${u.id}">Навсегда ∞</button>
+              ${u.vipActive ? `<button class="btn danger small" data-vip-revoke="${u.id}">Снять VIP</button>` : ""}
+            </span>
+          </div>
+          <div class="adm-sec"><h3>Звёзды</h3>
+            <span class="row" style="gap:6px">
+              <input type="number" data-star-id="${u.id}" placeholder="Сумма (минус — списание)" style="width:190px" min="-1000000" max="1000000">
+              <button class="btn ghost small" data-stars="${u.id}">Начислить</button>
+            </span>
+          </div>
+          <div class="adm-sec"><h3>Доступ</h3>
+            ${u.banned ? `<button class="btn small" data-unban="${u.id}">Разбанить</button>`
+                       : `<button class="btn danger small" data-ban="${u.id}">Забанить</button>`}
+          </div>`}
         </div>`;
       }).join("") : '<div class="empty">Никого не найдено</div>';
     };
@@ -1789,10 +2730,33 @@
       toast("Роль обновлена"); draw();
     };
     box.onclick = async (e) => {
-      const b = e.target.closest("button[data-vip]");
+      const b = e.target.closest("button[data-vip],button[data-vip-forever],button[data-vip-revoke],button[data-stars],button[data-ban],button[data-unban]");
       if (!b) return;
-      await call("/api/admin/vip", { body: { id: Number(b.dataset.vip), days: Number(b.dataset.days) } }).catch(() => null);
-      toast("Готово"); draw();
+      if (b.dataset.ban || b.dataset.unban) {
+        const id = Number(b.dataset.ban || b.dataset.unban);
+        const ban = !!b.dataset.ban;
+        if (ban && !confirm("Забанить пользователя? Ему будет закрыт весь сайт, кроме поддержки.")) return;
+        await call("/api/admin/ban", { body: { id, banned: ban } }).catch(() => null);
+        toast(ban ? "Пользователь забанен" : "Бан снят");
+        return draw();
+      }
+      if (b.dataset.vip) {
+        await call("/api/admin/vip", { body: { id: Number(b.dataset.vip), days: Number(b.dataset.days) } }).catch(() => null);
+        toast("Готово"); draw();
+      } else if (b.dataset.vipForever) {
+        await call("/api/admin/vip", { body: { id: Number(b.dataset.vipForever), forever: true } }).catch(() => null);
+        toast("VIP выдан навсегда"); draw();
+      } else if (b.dataset.vipRevoke) {
+        await call("/api/admin/vip", { body: { id: Number(b.dataset.vipRevoke), revoke: true } }).catch(() => null);
+        toast("VIP снят"); draw();
+      } else if (b.dataset.stars) {
+        const inp = box.querySelector(`input[data-star-id="${b.dataset.stars}"]`);
+        const amount = Number(inp && inp.value);
+        if (!amount) { toast("Укажите сумму (можно минус)"); return; }
+        const r = await api("/api/admin/stars", { body: { id: Number(b.dataset.stars), amount } });
+        if (!r.ok) { toast(errText(r.data.error)); return; }
+        toast(`Баланс: ${r.data.stars} ★`); draw();
+      }
     };
     draw();
   }
@@ -1801,19 +2765,19 @@
     const box = $("#admin");
     const [stats, sales] = await Promise.all([call("/api/admin/stats").catch(() => ({})), call("/api/admin/sales").catch(() => ({ sales: [] }))]);
     const bal = stats.botBalance == null ? "нет данных" : stats.botBalance + " ★";
-    box.innerHTML = `<div class="stat-grid">
+    box.innerHTML = `<div class="glass adm-card"><h2>Показатели</h2><div class="stat-grid">
         <div class="stat"><b>${bal}</b><small>Баланс бота</small></div>
         <div class="stat"><b>${stats.revenue ?? 0} ★</b><small>Всего получено</small></div>
         <div class="stat"><b>${stats.vip ?? 0}</b><small>Активных VIP</small></div>
         <div class="stat"><b>${stats.users ?? 0}</b><small>Пользователей</small></div>
-        <div class="stat"><b>${stats.films ?? 0}</b><small>Фильмов</small></div>
+        <div class="stat"><b>${stats.films ?? 0}</b><small>В каталоге</small></div>
         <div class="stat"><b>${stats.views ?? 0}</b><small>Просмотров</small></div>
-      </div>
-      <h2 class="section">Последние оплаты</h2>
+      </div></div>
+      <div class="glass adm-card"><h2>Последние оплаты</h2>
       ${sales.sales.length ? sales.sales.map((s) => `<div class="list-row">
         <div class="info"><b>${esc(s.label)} · ${s.amount} ★</b><small>${esc(s.user)} · ${esc(fmtDate(s.date))}${s.refunded ? " · возвращено" : ""}</small></div>
         ${s.refundable ? `<button class="btn danger small" data-refund="${s.id}">Вернуть</button>` : ""}
-      </div>`).join("") : '<div class="empty">Продаж пока нет</div>'}`;
+      </div>`).join("") : '<div class="empty">Продаж пока нет</div>'}</div>`;
     box.onclick = async (e) => {
       const b = e.target.closest("button[data-refund]");
       if (!b || !confirm("Вернуть звёзды покупателю?")) return;
@@ -1822,12 +2786,83 @@
     };
   }
 
+  // ---- подсказки при первом входе ----
+  // Экран затемнён, рамка стоит ровно на кнопке, а рядом — серая плотная карточка с подписью:
+  // что делает кнопка и куда ведёт. Внизу «Дальше» и «Пропустить», справа сверху крестик.
+  const TOUR = [
+    ["catalog", "Каталог", "Главный экран: здесь аниме и мультфильмы. Вверху — поиск по названию, автору или описанию."],
+    ["favorites", "Избранное", "Сюда попадает то, что вы отложили сердечком на обложке."],
+    ["vip", "VIP", "Подписка: просмотр без рекламы, отзывы первыми и золотой ник."],
+    ["support", "Поддержка", "Тикеты: опишите, что случилось или что добавить. Оператор отвечает прямо в чате тикета."],
+    ["profile", "Профиль", "Ваши звёзды, история просмотров и настройки."],
+  ];
+
+  function startTour() {
+    if (S.me.guest || S.me.banned || S.me.tourSeen) return;
+    try { if (localStorage.getItem("tourSeen")) return; } catch (_) {}
+    let i = 0;
+    const spot = document.createElement("div");
+    spot.className = "tour-spot";
+    const card = document.createElement("div");
+    card.className = "tour-card";
+    card.innerHTML = `<button class="tour-x" aria-label="Закрыть подсказки">&times;</button>
+      <b></b><p></p>
+      <div class="tour-acts"><button class="tour-skip">Пропустить</button><button class="tour-next">Дальше</button></div>`;
+    document.body.appendChild(spot);
+    document.body.appendChild(card);
+
+    const place = () => {
+      const [key, title, text] = TOUR[i];
+      const el = document.querySelector(`[data-go="${key}"]`);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        // рамка ровно на кнопке: по 6 px запаса со всех сторон
+        spot.style.left = (r.left - 6) + "px";
+        spot.style.top = (r.top - 6) + "px";
+        spot.style.width = (r.width + 12) + "px";
+        spot.style.height = (r.height + 12) + "px";
+        // карточка строго выше кнопки и никогда не накрывает её саму;
+        // на низком экране прижимается к верхнему краю, но не сползает на кнопку
+        card.style.left = Math.max(16, Math.min(window.innerWidth - card.offsetWidth - 16,
+          r.left + r.width / 2 - card.offsetWidth / 2)) + "px";
+        card.style.top = Math.max(12, r.top - card.offsetHeight - 16) + "px";
+      }
+      card.querySelector("b").textContent = title;
+      card.querySelector("p").textContent = text;
+      card.querySelector(".tour-next").textContent = i === TOUR.length - 1 ? "Готово" : "Дальше";
+    };
+
+    const finish = () => {
+      spot.remove();
+      card.remove();
+      window.removeEventListener("resize", place);
+      // больше не показываем никогда: отметка и в памяти браузера, и в базе
+      try { localStorage.setItem("tourSeen", "1"); } catch (_) {}
+      S.me.tourSeen = true;
+      call("/api/tour", { body: {} }).catch(() => {});
+    };
+    const next = () => { if (++i >= TOUR.length) return finish(); place(); };
+    card.querySelector(".tour-next").onclick = next;
+    card.querySelector(".tour-skip").onclick = finish;
+    card.querySelector(".tour-x").onclick = finish;
+    window.addEventListener("resize", place);
+    place();
+  }
+
   // ---- старт ----
-  (async function boot() {
+  async function boot() {
+    const t = tg();
+    if (t) { try { t.ready(); t.expand(); } catch (_) {} }
     await Promise.all([loadMe(), loadConfig()]);
+    // hashchange сам вызовет render(): иначе первый экран рисуется дважды и дёргается
     if (!location.hash) location.hash = "#/catalog";
-    render();
-  })();
+    else render();
+    startTour();
+  }
+  // стартуем после defer-скриптов: DOMContentLoaded случится уже после них;
+  // если скрипт Telegram не доехал (заблокирован сетью), приложение всё равно откроется
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
 })();
 </script>
 </body>
