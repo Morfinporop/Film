@@ -77,7 +77,7 @@ function reply(url, opts) {
   return { ok: true };
 }
 
-function boot(role, id, hash) {
+function boot(role, id, hash, pre) {
   me = Object.assign({}, me, { role, id: id || 5, roleTitle: role, canManage: role === "admin" || role === "owner",
     canUpload: role !== "user", isOwner: role === "owner" });
   ticketState = JSON.parse(JSON.stringify(tickets));
@@ -93,6 +93,7 @@ function boot(role, id, hash) {
   window.Hls = { isSupported: () => false, Events: {} };
   window.confirm = () => true;
   window.scrollTo = () => {};
+  if (pre) pre(window);
   window.eval(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
   return window;
 }
@@ -306,6 +307,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("полный экран без 100vw (он уводил кадр вправо)",
     !/\.vp\.fs\s*{[^}]*100vw/.test(html) && /\.vp\.fs\s*{[^}]*width:\s*100%/.test(html));
   check("в полном экране плеер переносится в конец body", html.includes("document.body.appendChild(vp)"));
+
+  // ---------- приложение Telegram на ПК: подпись от TelegramWebviewProxy ----------
+  const proxyInit = 'user=%7B%22id%22%3A1%7D&auth_date=' + Math.floor(Date.now() / 1000) + '&hash=zzz';
+  w = boot("owner", 1, "", (win) => {
+    win.TelegramWebviewProxy = {
+      postEvent(type) {
+        if (type === "web_app_request_init_data") setTimeout(() => win.dispatchEvent(
+          new win.MessageEvent("message", {
+            data: JSON.stringify({ eventType: "init_data_received", eventData: proxyInit }),
+          })), 5);
+      },
+    };
+  });
+  await sleep(500);
+  const hdrProxy = postBodies.length ? postBodies[0].headers : {};
+  check("на ПК подпись приходит от самого клиента Telegram (без внешнего скрипта)",
+    hdrProxy["X-Init-Data"] === proxyInit, hdrProxy["X-Init-Data"]);
 
   console.log("\n" + (fails.length ? "ПРОВАЛЕНО: " + fails.join("; ") : "ВСЕ ПРОВЕРКИ ПРОШЛИ"));
   process.exit(fails.length ? 1 : 0);

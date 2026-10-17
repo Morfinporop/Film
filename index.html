@@ -770,6 +770,42 @@
     if (m) initCache = decodeURIComponent(m[1]);
     return initCache;
   }
+  // Приложение Telegram на Windows/macOS (и мобильные клиенты) само внедряет в страницу
+  // мост TelegramWebviewProxy: запрашиваем initData напрямую у него — внешний скрипт
+  // с telegram.org для входа больше не нужен (на ПК он часто не грузится, из-за чего
+  // приложение и писало «Откройте приложение из Telegram»)
+  function initDataFromProxy() {
+    return new Promise((resolve) => {
+      const proxy = window.TelegramWebviewProxy;
+      if (!proxy || typeof proxy.postEvent !== "function") { resolve(""); return; }
+      let done = false;
+      const finish = (v) => {
+        if (done) return;
+        done = true;
+        window.removeEventListener("message", onMsg);
+        resolve(v || "");
+      };
+      function onMsg(e) {
+        let d = e && e.data;
+        if (typeof d === "string") { try { d = JSON.parse(d); } catch (_) { return; } }
+        if (d && d.eventType === "init_data_received") finish(typeof d.eventData === "string" ? d.eventData : "");
+      }
+      window.addEventListener("message", onMsg);
+      // на Android/iOS ответ может прийти через ReceiveEvent — подцепляемся цепочкой,
+      // чтобы не сломать обработчики родного скрипта, если он всё же загрузился
+      try {
+        window.Telegram = window.Telegram || {};
+        window.Telegram.WebView = window.Telegram.WebView || {};
+        const prev = window.Telegram.WebView.ReceiveEvent;
+        window.Telegram.WebView.ReceiveEvent = (type, data) => {
+          if (type === "init_data_received") finish(typeof data === "string" ? data : "");
+          if (typeof prev === "function") { try { prev(type, data); } catch (_) {} }
+        };
+      } catch (_) {}
+      try { proxy.postEvent("web_app_request_init_data"); } catch (_) { finish(""); }
+      setTimeout(() => finish(""), 2000);
+    });
+  }
   // тег <img> не умеет слать заголовки, поэтому подпись для картинок тикета едет в ?init=
   const authSrc = (url) => url + (url.includes("?") ? "&" : "?") + "init=" + encodeURIComponent(initData());
 
@@ -2871,6 +2907,8 @@
     if (t) { try { t.ready(); t.expand(); } catch (_) {} }
     const serviceHash = /tgWebApp/.test(location.hash);
     initData();  // кешируем подпись до того, как служебный фрагмент будет заменён
+    // ни скрипта, ни подписи в ссылке — спрашиваем initData у самого клиента Telegram
+    if (!initCache && window.TelegramWebviewProxy) initCache = await initDataFromProxy();
     await Promise.all([loadMe(), loadConfig()]);
     // hashchange сам вызовет render(): иначе первый экран рисуется дважды и дёргается
     if (!location.hash || serviceHash) location.hash = "#/catalog";
