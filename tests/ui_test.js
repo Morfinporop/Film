@@ -77,17 +77,17 @@ function reply(url, opts) {
   return { ok: true };
 }
 
-function boot(role, id) {
+function boot(role, id, hash) {
   me = Object.assign({}, me, { role, id: id || 5, roleTitle: role, canManage: role === "admin" || role === "owner",
     canUpload: role !== "user", isOwner: role === "owner" });
   ticketState = JSON.parse(JSON.stringify(tickets));
   posts = []; postBodies = [];
-  const dom = new JSDOM(html, { url: "https://app.test/#/catalog", runScripts: "outside-only", pretendToBeVisual: true });
+  const dom = new JSDOM(html, { url: "https://app.test/" + (hash || "#/catalog"), runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
   window.Telegram = { WebApp: { ready() {}, expand() {} } };
   window.fetch = async (url, opts) => {
     posts.push(String(url).split("?")[0]);
-    postBodies.push({ url: String(url), body: opts && opts.body });
+    postBodies.push({ url: String(url), body: opts && opts.body, headers: (opts && opts.headers) || {} });
     return { ok: true, status: 200, json: async () => reply(String(url), opts), text: async () => "{}" };
   };
   window.Hls = { isSupported: () => false, Events: {} };
@@ -292,6 +292,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check("у забаненного видна кнопка «Разбанить»",
     d.querySelector("#ulist").textContent.includes("Разбанить") &&
     d.querySelector("#ulist").textContent.includes("Забанен"));
+
+  // ---------- десктоп-приложение Telegram: подпись из фрагмента ссылки ----------
+  const initStr = 'user=%7B%22id%22%3A5%7D&auth_date=1&hash=abc';
+  w = boot("user", 5, "#tgWebAppData=" + encodeURIComponent(initStr) + "&tgWebAppVersion=7.0");
+  await sleep(300);
+  const hdr = postBodies.length ? postBodies[0].headers : {};
+  check("подпись берётся из #tgWebAppData, когда скрипта Telegram нет",
+    hdr["X-Init-Data"] === initStr, hdr["X-Init-Data"]);
+  check("служебный фрагмент заменяется маршрутом каталога", w.location.hash === "#/catalog", w.location.hash);
+
+  // ---------- полный экран ровно по видимой области ----------
+  check("полный экран без 100vw (он уводил кадр вправо)",
+    !/\.vp\.fs\s*{[^}]*100vw/.test(html) && /\.vp\.fs\s*{[^}]*width:\s*100%/.test(html));
+  check("в полном экране плеер переносится в конец body", html.includes("document.body.appendChild(vp)"));
 
   console.log("\n" + (fails.length ? "ПРОВАЛЕНО: " + fails.join("; ") : "ВСЕ ПРОВЕРКИ ПРОШЛИ"));
   process.exit(fails.length ? 1 : 0);

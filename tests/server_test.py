@@ -251,6 +251,29 @@ async def run():
     check("старый сезон схлопывается в общий список при запуске",
           Database(cfg.db_path).get_film(e2)["season"] == 1)
 
+    # ---------- вход по обычной ссылке, без Telegram ----------
+    async def guest_req(method, path, body=None):
+        async with aiohttp.ClientSession() as s:
+            async with s.request(method, base + path, headers={}, json=body) as r:
+                try:
+                    return r.status, await r.json()
+                except Exception:
+                    return r.status, {}
+    st, g_me = await guest_req("GET", "/api/me")
+    check("без Telegram пользователь — гость", st == 200 and g_me.get("guest") is True)
+    st, g_films = await guest_req("GET", "/api/films")
+    check("каталог открывается по ссылке без Telegram", st == 200 and isinstance(g_films, list))
+    guest_film = db.create_film(title="Открытый", kind="video", status="ready", owner_id=OWNER,
+                                duration=300, width=64, height=64)
+    st, g_det = await guest_req("GET", f"/api/films/{guest_film}")
+    check("страница видео открывается гостю", st == 200 and g_det.get("title") == "Открытый")
+    st, g_play = await guest_req("POST", f"/api/films/{guest_film}/play", {})
+    check("гость может запустить обычное видео", st == 200 and g_play.get("kind") == "hls", g_play)
+    vip_film = db.create_film(title="VIP", kind="video", status="ready", owner_id=OWNER,
+                              duration=300, width=64, height=64, is_vip=1)
+    st, g_vip = await guest_req("POST", f"/api/films/{vip_film}/play", {})
+    check("VIP-видео без Telegram не открывается", st == 403 and g_vip.get("error") == "vip_required")
+
     await runner.cleanup()
     db.close()
     print("\n" + ("ПРОВАЛЕНО: " + "; ".join(FAILS) if FAILS else "ВСЕ ПРОВЕРКИ ПРОШЛИ"))

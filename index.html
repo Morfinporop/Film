@@ -192,7 +192,7 @@
     touch-action: manipulation;
   }
   .vp.vertical { aspect-ratio: 9 / 16; max-height: 72vh; width: auto; max-width: 100%; margin: 0 auto; }
-  .vp.fs { position: fixed; inset: 0; z-index: 999; background: #000; border-radius: 0; width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; margin: 0; }
+  .vp.fs { position: fixed; inset: 0; z-index: 999; background: #000; border-radius: 0; width: 100%; height: 100%; max-height: none; aspect-ratio: auto; margin: 0; }
   /* видео растянуто на весь кадр без чёрных полос по краям: края, не поместившиеся
      в кадр, аккуратно обрезаются, а не закрываются чёрным */
   .vp video { width: 100%; height: 100%; display: block; object-fit: cover; background: transparent; }
@@ -759,7 +759,17 @@
     ? `<span class="nick-gradient" style="--g:${esc(safeGrad(r.gradient))}">${esc(r.name)}</span>`
     : `<b>${esc(r.name)}</b>`;
 
-  function initData() { const t = tg(); return (t && t.initData) || ""; }
+  let initCache = "";
+  function initData() {
+    if (initCache) return initCache;
+    const t = tg();
+    if (t && t.initData) { initCache = t.initData; return initCache; }
+    // часть клиентов (приложение Telegram на ПК, старые WebView) не подгружает скрипт
+    // Telegram вовремя — тогда подпись берём прямо из фрагмента ссылки #tgWebAppData=...
+    const m = /[#&]tgWebAppData=([^&]+)/.exec(location.hash || "");
+    if (m) initCache = decodeURIComponent(m[1]);
+    return initCache;
+  }
   // тег <img> не умеет слать заголовки, поэтому подпись для картинок тикета едет в ?init=
   const authSrc = (url) => url + (url.includes("?") ? "&" : "?") + "init=" + encodeURIComponent(initData());
 
@@ -1459,7 +1469,12 @@
     // полноэкранный режим реализован через CSS-класс .fs (fixed на весь экран), а не
     // только через Fullscreen API: внутри Telegram WebView на телефоне этот API часто
     // недоступен (document.fullscreenEnabled === false), из-за чего кнопка раньше пропадала
+    let vpHome = null, vpNext = null;
     function enterFs() {
+      // выносим плеер в конец body: внутри центрированной колонки полный экран
+      // на части устройств вставал со сдвигом вправо (половина кадра за экраном)
+      vpHome = vp.parentNode; vpNext = vp.nextSibling;
+      document.body.appendChild(vp);
       vp.classList.add("fs");
       nav.classList.add("hidden");
       document.body.style.overflow = "hidden";
@@ -1473,6 +1488,7 @@
       document.body.style.overflow = "";
       $("#vpFs").innerHTML = ICON.fs;
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      if (vpHome && vpHome.isConnected) vpHome.insertBefore(vp, vpNext);
     }
     function toggleFs() { vp.classList.contains("fs") ? exitFs() : enterFs(); }
     function togglePip() {
@@ -2853,9 +2869,11 @@
   async function boot() {
     const t = tg();
     if (t) { try { t.ready(); t.expand(); } catch (_) {} }
+    const serviceHash = /tgWebApp/.test(location.hash);
+    initData();  // кешируем подпись до того, как служебный фрагмент будет заменён
     await Promise.all([loadMe(), loadConfig()]);
     // hashchange сам вызовет render(): иначе первый экран рисуется дважды и дёргается
-    if (!location.hash) location.hash = "#/catalog";
+    if (!location.hash || serviceHash) location.hash = "#/catalog";
     else render();
     startTour();
   }

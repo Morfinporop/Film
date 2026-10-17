@@ -1870,21 +1870,25 @@ def build_web(cfg: Config, db: Database, bot: Bot, dp: Dispatcher,
         if film["kind"] == "video" and film["status"] != "ready":
             return _err("processing", 202)
         user = api.user_of(request)
-        if not user:
-            return _err("auth", 401)
-        if api.locked(user, film):
+        # без Telegram (просто ссылка в браузере) смотреть можно всё, кроме VIP:
+        # проверить подписку без аккаунта нечем
+        if user:
+            if api.locked(user, film):
+                return _json({"error": "vip_required"}, 403)
+        elif film["is_vip"]:
             return _json({"error": "vip_required"}, 403)
-        db.touch_watch(user["id"], film["id"])
+        if user:
+            db.touch_watch(user["id"], film["id"])
         if film["kind"] == "link":
             return _json({"kind": "link", "src": embed_url(film["url"]), "url": film["url"]})
-        watch = db.get_watch(user["id"], film["id"]) or {}
+        watch = (db.get_watch(user["id"], film["id"]) if user else None) or {}
         pos = float(watch.get("position") or 0)
         dur = float(watch.get("duration") or film["duration"] or 0)
         resume_at = pos if 5 < pos < dur - 15 else 0
         # реклама не показывается тем, у кого есть доступ к VIP-контенту: ни реальным платным
         # подписчикам, ни персоналу (владелец, админы, редакторы) — у всех них vip_active() = True
         ads = []
-        if not api.vip_active(user) and dur >= 30:
+        if (not user or not api.vip_active(user)) and dur >= 30:
             ads = [{"id": a["id"], "src": f"/api/ad/{a['id']}/video", "link": a["link"], "at": a["start_sec"]}
                    for a in db.list_ads()]
         token = make_media_token(api.secret, film["id"])
