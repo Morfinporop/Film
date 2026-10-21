@@ -308,12 +308,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     w.location.hash);
 
   // ---------- нижняя панель: капсула и ведение пальцем ----------
-  check("в панели есть бегущая белая капсула", !!d.querySelector(".nav-glider"));
+  check("в панели есть бегущая стеклянная капсула — жидкое стекло, а не белая плашка",
+    !!d.querySelector(".nav-glider") &&
+    /\.nav-glider\s*{[^}]*backdrop-filter:\s*blur/.test(html) &&
+    !/\.nav-glider\s*{[^}]*#ffffff/i.test(html));
   check("панель ведётся pointer-событиями (зажал и повёл)",
     html.includes('nav.addEventListener("pointerdown"') &&
     html.includes('nav.addEventListener("pointermove"') &&
     html.includes("elementFromPoint"));
   check("над пальцем всплывает название вкладки", html.includes('id="navTag"') && html.includes("showTag"));
+  check("цветных световых пятен-градиентов за интерфейсом нет",
+    !html.includes('class="fx"') && !html.includes("#7c3aed") && !html.includes("#db2777") && !html.includes("0284c7"));
+  check("нигде нет белых плашек: кнопки, вкладки и отправка — стекло",
+    !html.includes("#e9e9f2") && !html.includes("#e8e8f0") &&
+    !/\.tabs button\.on\s*{[^}]*#fff/i.test(html) && !/\.tk-go\s*{[^}]*#fff/i.test(html));
+  check("вкладки админки листаются пальцем, мышью и колесиком",
+    html.includes("tabsScrollDrag") && html.includes("tabsDrag") &&
+    /\.tabs\s*{[^}]*overflow-x:\s*auto/.test(html) && html.includes('"wheel"'));
   check("подпись входа кэшируется на вкладке (ПК с закэшированной страницей)",
     html.includes("sessionStorage"));
   check("есть поздняя доавторизация после подгрузки скрипта Telegram", html.includes("lateAuth"));

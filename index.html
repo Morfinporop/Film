@@ -43,20 +43,6 @@
     background:
       linear-gradient(180deg, rgba(6, 6, 12, .42), rgba(6, 6, 12, .78) 62%, rgba(6, 6, 12, .9));
   }
-  /* цветные «стеклянные» пятна за интерфейсом: в блюре панелей играет цвет, как в iOS */
-  .fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-  .fx i {
-    position: absolute; width: 58vmax; height: 58vmax; border-radius: 50%;
-    filter: blur(120px); opacity: .34; mix-blend-mode: screen; will-change: transform;
-  }
-  .fx i:nth-child(1) { left: -16vmax; top: -18vmax; background: #7c3aed; animation: orb1 26s ease-in-out infinite alternate; }
-  .fx i:nth-child(2) { right: -20vmax; top: 6vmax; background: #0284c7; animation: orb2 31s ease-in-out infinite alternate; }
-  .fx i:nth-child(3) { left: -12vmax; bottom: -24vmax; background: #db2777; animation: orb3 37s ease-in-out infinite alternate; }
-  .fx i:nth-child(4) { right: -14vmax; bottom: -14vmax; width: 42vmax; height: 42vmax; background: #0d9488; opacity: .26; animation: orb1 44s ease-in-out infinite alternate-reverse; }
-  @keyframes orb1 { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(7vmax, 5vmax, 0) scale(1.14); } }
-  @keyframes orb2 { from { transform: translate3d(0, 0, 0) scale(1.08); } to { transform: translate3d(-6vmax, 7vmax, 0) scale(.94); } }
-  @keyframes orb3 { from { transform: translate3d(0, 0, 0) scale(.96); } to { transform: translate3d(6vmax, -7vmax, 0) scale(1.12); } }
-
   button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   a { color: inherit; -webkit-tap-highlight-color: transparent; }
@@ -87,7 +73,7 @@
   }
   @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
     /* без поддержки блюра стекло заменяем плотным фоном, чтобы текст оставался читаемым */
-    .glass, .nav { background: rgba(14, 15, 24, .94); }
+    .glass, .nav, .btn, .tabs button.on { background: rgba(14, 15, 24, .94); }
     .btn.ghost { background: rgba(26, 28, 40, .92); }
   }
 
@@ -101,7 +87,7 @@
   .adm-sec:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
   .adm-sec > h3 { margin: 0 0 10px; font-size: 12px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 
-  /* ---- нижняя панель: стеклянный док с бегущей белой капсулой ---- */
+  /* ---- нижняя панель: стеклянный док с бегущей стеклянной капсулой ---- */
   .nav {
     position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
@@ -117,22 +103,27 @@
     transition: transform .25s var(--spring);
   }
   .nav.grab { transform: translateX(-50%) translateY(-5px) scale(1.015); }
-  /* бегущая белая капсула под активной кнопкой */
+  /* бегущая капсула под активной кнопкой — тоже жидкое стекло, а не белая плашка */
   .nav-glider {
     position: absolute; top: 6px; bottom: 6px; left: 6px; width: 0; border-radius: 999px;
-    background: linear-gradient(180deg, #ffffff, #e9e9f2);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, .38), inset 0 1px 0 #fff;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, .10));
+    -webkit-backdrop-filter: blur(20px) saturate(220%);
+    backdrop-filter: blur(20px) saturate(220%);
+    border: 1px solid rgba(255, 255, 255, .38); border-top-color: rgba(255, 255, 255, .78);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .32), inset 0 1px 0 rgba(255, 255, 255, .55);
     transition: left .3s var(--spring), width .3s var(--spring), opacity .2s;
     opacity: 0; pointer-events: none; z-index: 0;
   }
   .nav-glider.show { opacity: 1; }
+  /* при удержании панели капсула чуть ярче: понятно, что панель «в руке» */
+  .nav.grab .nav-glider { border-top-color: rgba(255, 255, 255, .95); box-shadow: 0 10px 26px rgba(0, 0, 0, .36), inset 0 1px 0 rgba(255, 255, 255, .72); }
   .nav button {
     position: relative; z-index: 1; flex: 1 1 0; height: 54px; border: 0; border-radius: 999px;
     background: transparent; color: var(--muted); padding: 0;
     display: grid; place-items: center;
     transition: color .25s, transform .2s var(--spring);
   }
-  .nav button.on { color: #101018; }
+  .nav button.on { color: #fff; text-shadow: 0 1px 12px rgba(0, 0, 0, .45); }
   .nav svg { width: 23px; height: 23px; transition: transform .28s cubic-bezier(.2, .9, .3, 1.5); }
   .nav button:hover svg { transform: translateY(-3px) scale(1.12); }
   /* нажатие: иконка заметно подпрыгивает вверх и возвращается */
@@ -147,7 +138,7 @@
   @keyframes navGlow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
   /* ведение пальцем по панели: кнопка под пальцем приподнимается */
   .nav button.pick { color: var(--text); }
-  .nav button.pick.on { color: #101018; }
+  .nav button.pick.on { color: #fff; text-shadow: 0 1px 12px rgba(0, 0, 0, .45); }
   .nav button.pick svg { transform: translateY(-7px) scale(1.3); }
   /* всплывающая подпись вкладки над пальцем */
   .nav-tag {
@@ -163,9 +154,13 @@
 
   /* ---- кнопки ---- */
   .btn {
-    border: 0; border-radius: 999px; padding: 12px 20px; font-weight: 620; font-size: 15px;
-    background: linear-gradient(180deg, #ffffff, #e8e8f0); color: #0c0c14;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, .32), inset 0 1px 0 #fff;
+    border: 1px solid rgba(255, 255, 255, .34); border-top-color: rgba(255, 255, 255, .62);
+    border-radius: 999px; padding: 12px 20px; font-weight: 620; font-size: 15px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, .10));
+    color: var(--text);
+    -webkit-backdrop-filter: blur(20px) saturate(190%);
+    backdrop-filter: blur(20px) saturate(190%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .32), inset 0 1px 0 rgba(255, 255, 255, .48);
     transition: opacity .2s;
   }
   .btn:disabled { opacity: .45; cursor: default; }
@@ -431,7 +426,11 @@
   .vp-btn svg { width: 22px; height: 22px; fill: currentColor; }
   .vp-btn.stroke svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .vp-btn.textual { width: auto; border-radius: 10px; padding: 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .02em; }
-  .vp-btn.textual.on, .vp-btn.stroke.on { background: #fff; color: #000; }
+  .vp-btn.textual.on, .vp-btn.stroke.on {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .32), rgba(255, 255, 255, .12)); color: #fff;
+    border: 1px solid rgba(255, 255, 255, .4); border-top-color: rgba(255, 255, 255, .75);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5);
+  }
   .vp-vol { position: relative; display: flex; align-items: center; }
   /* Громкость — как перемотка: тонкая полоса, залитая по значению, без круглого бегунка.
      Видна всегда — в обычном окне, в полном экране и на телефоне; двигается пальцем и мышью. */
@@ -547,8 +546,10 @@
     stroke-linecap: round; stroke-linejoin: round; }
   .tk-go {
     flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
-    border: 0; background: linear-gradient(180deg, #fff, #e8e8f0); color: #0c0c14; cursor: pointer; padding: 0;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, .35), inset 0 1px 0 #fff;
+    border: 1px solid rgba(255, 255, 255, .34); border-top-color: rgba(255, 255, 255, .62);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, .10)); color: var(--text); cursor: pointer; padding: 0;
+    -webkit-backdrop-filter: blur(16px) saturate(190%); backdrop-filter: blur(16px) saturate(190%);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .48);
   }
   .tk-go svg { width: 20px; height: 20px; fill: currentColor; }
   .tk-shot { display: block; max-width: 220px; border-radius: 14px; border: 1px solid var(--line); margin-top: 6px; }
@@ -589,22 +590,28 @@
   }
   .toast.show { display: block; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; font-size: 15px; }
-  /* вкладки — как сегмент-контрол iOS: стеклянная дорожка, активный пункт — белая капсула */
+  /* вкладки — как сегмент-контрол iOS: стеклянная дорожка, активный пункт — стеклянная капсула.
+     Пунктов бывает много: дорожка листается пальцем, мышью и колесиком, ничего не обрезается */
   .tabs {
     display: flex; gap: 4px; margin-bottom: 20px; padding: 4px; border-radius: 999px;
     background: rgba(10, 12, 22, .45); border: 1px solid var(--glass-line);
     backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
     overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap;
+    user-select: none; -webkit-user-select: none; overscroll-behavior-x: contain;
   }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs button {
-    flex: 1 0 auto; border: 0; border-radius: 999px; padding: 9px 16px; background: transparent;
+    flex: 1 0 auto; border: 1px solid transparent; border-radius: 999px; padding: 9px 16px; background: transparent;
     color: var(--muted); font-size: 14px; white-space: nowrap;
   }
   .tabs button.on {
-    background: linear-gradient(180deg, #fff, #e9e9f2); color: #101018; font-weight: 620;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, .35), inset 0 1px 0 #fff;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .28), rgba(255, 255, 255, .10));
+    color: var(--text); font-weight: 620;
+    border-color: rgba(255, 255, 255, .34); border-top-color: rgba(255, 255, 255, .68);
+    -webkit-backdrop-filter: blur(14px) saturate(190%); backdrop-filter: blur(14px) saturate(190%);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .5);
   }
+  @media (hover: hover) { .tabs { cursor: grab; } }
   .list-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .list-row:last-child { border-bottom: 0; }
   .list-row .info { flex: 1; min-width: 160px; }
@@ -639,7 +646,7 @@
   .prof-ava img { border-radius: 50%; }
   .prof-ava::before {
     content: ""; position: absolute; inset: -4px; border-radius: 50%; z-index: -1;
-    background: conic-gradient(from 120deg, rgba(255, 215, 0, .9), rgba(139, 92, 246, .8), rgba(56, 189, 248, .8), rgba(255, 215, 0, .9));
+    background: conic-gradient(from 120deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .22), rgba(255, 255, 255, .75), rgba(255, 255, 255, .25), rgba(255, 255, 255, .95));
     filter: blur(7px); opacity: .8; animation: ringSpin 7s linear infinite;
   }
   @keyframes ringSpin { to { transform: rotate(360deg); } }
@@ -837,7 +844,6 @@
 
   /* меньше движения тем, кто просил об этом систему */
   @media (prefers-reduced-motion: reduce) {
-    .fx { display: none; }
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
 
@@ -854,8 +860,6 @@
 </style>
 </head>
 <body>
-<!-- цветные пятна за интерфейсом: в блюре стеклянных панелей играет цвет, как в iOS -->
-<div class="fx" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="wrap" id="app"><div class="empty">Загрузка…</div></div>
 
 <nav class="nav" id="nav">
@@ -1088,7 +1092,7 @@
 
   function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 
-  // ---- нижняя панель: белая капсула под активной кнопкой + ведение пальцем ----
+  // ---- нижняя панель: стеклянная капсула под активной кнопкой + ведение пальцем ----
   const navGlider = document.getElementById("navGlider");
   const navTag = document.getElementById("navTag");
   function activeNavBtn(name) {
@@ -1176,6 +1180,46 @@
       const b = e.target.closest ? e.target.closest("button[data-go]") : null;
       if (b && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); go("#/" + b.dataset.go); }
     });
+  })();
+
+  /* Верхние вкладки (сегмент-контрол .tabs), когда их много: на телефоне листаются
+     пальцем как обычный скролл, на ПК — перетаскиванием мышью и колесиком.
+     Быстрое перетаскивание не должно считаться нажатием на вкладку. */
+  (function tabsScrollDrag() {
+    let tabsDrag = null, tabsDragMoved = 0;
+    const overflown = (t) => t.scrollWidth > t.clientWidth + 2;
+    document.addEventListener("pointerdown", (e) => {
+      const tabs = e.target.closest && e.target.closest(".tabs");
+      if (!tabs || !overflown(tabs)) return;
+      tabsDrag = { tabs, x: e.clientX, left: tabs.scrollLeft };
+      tabsDragMoved = 0;
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (!tabsDrag) return;
+      const dx = e.clientX - tabsDrag.x;
+      if (Math.abs(dx) > 5) {
+        tabsDragMoved = Math.abs(dx);
+        tabsDrag.tabs.scrollLeft = tabsDrag.left - dx;
+      }
+    });
+    const end = () => { tabsDrag = null; };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    document.addEventListener("click", (e) => {
+      if (tabsDragMoved > 7 && e.target.closest && e.target.closest(".tabs")) {
+        e.preventDefault();
+        e.stopPropagation();
+        tabsDragMoved = 0;
+      }
+    }, true);
+    document.addEventListener("wheel", (e) => {
+      const tabs = e.target.closest && e.target.closest(".tabs");
+      if (!tabs || !overflown(tabs)) return;
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (!d) return;
+      tabs.scrollLeft += d;
+      e.preventDefault();
+    }, { passive: false });
   })();
 
   function stopPlayer() {
