@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a10">
 <title>Аниме и мультфильмы</title>
 <!-- внешние скрипты грузятся с defer и не блокируют страницу: на ПК отдача telegram.org
      может подвисать, а синхронное подключение держало бы всё приложение на белом экране -->
@@ -10,14 +11,21 @@
 <script defer src="/static/hls.min.js"></script>
 <style>
   :root {
-    --text: #f4f4f5;
-    --muted: #a1a1aa;
-    --line: rgba(255,255,255,.1);
-    /* единый фон всех карточек, панелей и кнопок: как у поля ввода */
-    --field: rgba(0,0,0,.35);
+    --text: #f5f7fc;
+    --muted: rgba(235, 240, 252, .62);
+    --line: rgba(255, 255, 255, .13);
+    /* единый фон полей и мелких контролов */
+    --field: rgba(10, 12, 22, .45);
     --accent: #ffffff;
     --danger: #ef4444;
     --gold: #e7c15a;
+    /* Liquid Glass: зеркальная верхняя кромка, насыщенный блюр, мягкая глубокая тень */
+    --glass-bg: linear-gradient(158deg, rgba(255, 255, 255, .17), rgba(255, 255, 255, .055) 46%, rgba(255, 255, 255, .02));
+    --glass-blur: blur(30px) saturate(190%);
+    --glass-line: rgba(255, 255, 255, .17);
+    --glass-hi: rgba(255, 255, 255, .38);
+    --glass-shadow: 0 22px 55px rgba(0, 0, 0, .45), 0 2px 8px rgba(0, 0, 0, .22);
+    --spring: cubic-bezier(.2, .9, .25, 1);
     --bg-url: url("https://i.pinimg.com/1200x/93/31/9d/93319d1600bd69fcb7db28fef7b4a7bb.jpg");
   }
   * { box-sizing: border-box; }
@@ -25,72 +33,110 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: var(--text);
-    background: #0b0b0c var(--bg-url) center / cover fixed no-repeat;
+    background: #0a0a10 var(--bg-url) center / cover fixed no-repeat;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
+  /* затемнение поверх фото: насквозь видно мягкий фон, а не грязную черноту */
   body::before {
-    content: ""; position: fixed; inset: 0; z-index: -1;
-    background: linear-gradient(180deg, rgba(0,0,0,.72), rgba(0,0,0,.9));
+    content: ""; position: fixed; inset: 0; z-index: -2;
+    background:
+      linear-gradient(180deg, rgba(6, 6, 12, .42), rgba(6, 6, 12, .78) 62%, rgba(6, 6, 12, .9));
   }
+  /* цветные «стеклянные» пятна за интерфейсом: в блюре панелей играет цвет, как в iOS */
+  .fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .fx i {
+    position: absolute; width: 58vmax; height: 58vmax; border-radius: 50%;
+    filter: blur(120px); opacity: .34; mix-blend-mode: screen; will-change: transform;
+  }
+  .fx i:nth-child(1) { left: -16vmax; top: -18vmax; background: #7c3aed; animation: orb1 26s ease-in-out infinite alternate; }
+  .fx i:nth-child(2) { right: -20vmax; top: 6vmax; background: #0284c7; animation: orb2 31s ease-in-out infinite alternate; }
+  .fx i:nth-child(3) { left: -12vmax; bottom: -24vmax; background: #db2777; animation: orb3 37s ease-in-out infinite alternate; }
+  .fx i:nth-child(4) { right: -14vmax; bottom: -14vmax; width: 42vmax; height: 42vmax; background: #0d9488; opacity: .26; animation: orb1 44s ease-in-out infinite alternate-reverse; }
+  @keyframes orb1 { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(7vmax, 5vmax, 0) scale(1.14); } }
+  @keyframes orb2 { from { transform: translate3d(0, 0, 0) scale(1.08); } to { transform: translate3d(-6vmax, 7vmax, 0) scale(.94); } }
+  @keyframes orb3 { from { transform: translate3d(0, 0, 0) scale(.96); } to { transform: translate3d(6vmax, -7vmax, 0) scale(1.12); } }
+
   button, input, select, textarea { font: inherit; color: inherit; }
-  button { cursor: pointer; }
-  a { color: inherit; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  a { color: inherit; -webkit-tap-highlight-color: transparent; }
   img { display: block; }
   .hidden { display: none !important; }
 
-  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 140px; }
-  h1 { font-size: 26px; font-weight: 650; margin: 0 0 6px; letter-spacing: -.01em; }
-  h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
-  .sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 26px 20px 150px; }
+  h1 { font-size: 27px; font-weight: 680; margin: 0 0 6px; letter-spacing: -.015em; }
+  h2 { font-size: 18px; font-weight: 620; margin: 0 0 12px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; line-height: 1.55; }
   .section { margin-top: 36px; }
-  /* Liquid Glass: полупрозрачное стекло — блюр, подсветка верхней кромки, мягкая тень */
+
+  /* ---- Liquid Glass: базовая панель ---- */
   .glass {
     position: relative;
-    background: linear-gradient(165deg, rgba(255,255,255,.13), rgba(255,255,255,.045) 46%, rgba(255,255,255,.02));
-    border: 1px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.3);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-line); border-top-color: var(--glass-hi);
     border-radius: 26px; padding: 20px;
-    -webkit-backdrop-filter: blur(30px) saturate(180%);
-    backdrop-filter: blur(30px) saturate(180%);
-    box-shadow: 0 20px 50px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.24);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .22),
+      inset 0 -1px 0 rgba(255, 255, 255, .05);
+  }
+  /* зеркальный блик в верхней части стекла */
+  .glass::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(130% 60% at 24% -18%, rgba(255, 255, 255, .16), transparent 58%);
   }
   @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
     /* без поддержки блюра стекло заменяем плотным фоном, чтобы текст оставался читаемым */
-    .glass, .nav { background: rgba(18,18,22,.92); }
-    .btn.ghost { background: rgba(30,30,36,.9); }
+    .glass, .nav { background: rgba(14, 15, 24, .94); }
+    .btn.ghost { background: rgba(26, 28, 40, .92); }
   }
 
   /* ---- админка: структура — карточки с заголовками, поля парами, блоки разделены ---- */
   .adm-card { margin-bottom: 16px; padding: 18px 20px; }
   .adm-card > h2 { margin: 0 0 14px; font-size: 17px; }
-  .adm-card > h2 small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .adm-card > h2 small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
   .adm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
   @media (max-width: 560px) { .adm-grid { grid-template-columns: 1fr; } }
-  .adm-sec { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .adm-sec { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
   .adm-sec:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
-  .adm-sec > h3 { margin: 0 0 10px; font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .adm-sec > h3 { margin: 0 0 10px; font-size: 12px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 
-  /* ---- нижняя навигация ---- */
+  /* ---- нижняя панель: стеклянный док с бегущей белой капсулой ---- */
   .nav {
-    position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom));
+    position: fixed; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
-    width: min(calc(100% - 48px), 380px);
-    display: flex; justify-content: space-between; align-items: center; gap: 6px;
-    padding: 8px; border-radius: 999px; z-index: 10;
-    background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
-    border: 1px solid rgba(255,255,255,.18); border-top-color: rgba(255,255,255,.32);
-    backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
-    box-shadow: 0 14px 38px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.25);
+    width: min(calc(100% - 36px), 392px);
+    display: flex; align-items: stretch; gap: 2px;
+    padding: 6px; border-radius: 999px; z-index: 30;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .17), rgba(255, 255, 255, .06));
+    border: 1px solid rgba(255, 255, 255, .2); border-top-color: rgba(255, 255, 255, .4);
+    backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .3);
+    /* панель ведут пальцем: свайпы по ней не скроллят страницу и не выделяют */
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    transition: transform .25s var(--spring);
   }
+  .nav.grab { transform: translateX(-50%) translateY(-5px) scale(1.015); }
+  /* бегущая белая капсула под активной кнопкой */
+  .nav-glider {
+    position: absolute; top: 6px; bottom: 6px; left: 6px; width: 0; border-radius: 999px;
+    background: linear-gradient(180deg, #ffffff, #e9e9f2);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .38), inset 0 1px 0 #fff;
+    transition: left .3s var(--spring), width .3s var(--spring), opacity .2s;
+    opacity: 0; pointer-events: none; z-index: 0;
+  }
+  .nav-glider.show { opacity: 1; }
   .nav button {
-    width: 52px; height: 52px; border-radius: 50%; border: 0;
-    background: transparent; color: var(--muted);
-    display: grid; place-items: center; transition: background .2s, color .2s;
+    position: relative; z-index: 1; flex: 1 1 0; height: 54px; border: 0; border-radius: 999px;
+    background: transparent; color: var(--muted); padding: 0;
+    display: grid; place-items: center;
+    transition: color .25s, transform .2s var(--spring);
   }
-  .nav button.on { background: #fff; color: #000; }
-  .nav svg { width: 22px; height: 22px; transition: transform .25s cubic-bezier(.2,.9,.3,1.4); }
+  .nav button.on { color: #101018; }
+  .nav svg { width: 23px; height: 23px; transition: transform .28s cubic-bezier(.2, .9, .3, 1.5); }
   .nav button:hover svg { transform: translateY(-3px) scale(1.12); }
   /* нажатие: иконка заметно подпрыгивает вверх и возвращается */
-  .nav button:active svg { animation: navHop .55s cubic-bezier(.3,1.5,.4,1); }
+  .nav button:active svg { animation: navHop .55s cubic-bezier(.3, 1.5, .4, 1); }
   @keyframes navHop {
     0%   { transform: translateY(0) scale(1); }
     35%  { transform: translateY(-9px) scale(1.22) rotate(-4deg); }
@@ -99,53 +145,95 @@
   }
   .nav button.on svg { animation: navGlow 2.4s ease-in-out infinite; }
   @keyframes navGlow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+  /* ведение пальцем по панели: кнопка под пальцем приподнимается */
+  .nav button.pick { color: var(--text); }
+  .nav button.pick.on { color: #101018; }
+  .nav button.pick svg { transform: translateY(-7px) scale(1.3); }
+  /* всплывающая подпись вкладки над пальцем */
+  .nav-tag {
+    position: fixed; z-index: 60; transform: translate(-50%, -100%) scale(.85);
+    padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; white-space: nowrap;
+    color: var(--text); pointer-events: none; opacity: 0; margin-top: -14px;
+    background: var(--glass-bg); border: 1px solid var(--glass-line); border-top-color: var(--glass-hi);
+    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .25);
+    transition: opacity .18s, transform .18s var(--spring);
+  }
+  .nav-tag.show { opacity: 1; transform: translate(-50%, -100%) scale(1); }
 
   /* ---- кнопки ---- */
   .btn {
-    border: 0; border-radius: 999px; padding: 12px 20px; font-weight: 600; font-size: 15px;
-    background: #fff; color: #000; transition: opacity .2s;
+    border: 0; border-radius: 999px; padding: 12px 20px; font-weight: 620; font-size: 15px;
+    background: linear-gradient(180deg, #ffffff, #e8e8f0); color: #0c0c14;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .32), inset 0 1px 0 #fff;
+    transition: opacity .2s;
   }
   .btn:disabled { opacity: .45; cursor: default; }
-  .btn.ghost { background: linear-gradient(165deg, rgba(255,255,255,.16), rgba(255,255,255,.06));
-    color: var(--text); border: 1px solid rgba(255,255,255,.2);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
-    -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); }
-  .btn.danger { background: rgba(239,68,68,.16); color: #fca5a5; }
+  .btn.ghost {
+    background: var(--glass-bg);
+    color: var(--text); border: 1px solid rgba(255, 255, 255, .2); border-top-color: rgba(255, 255, 255, .34);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 8px 20px rgba(0, 0, 0, .22);
+    -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
+  }
+  .btn.danger {
+    background: linear-gradient(165deg, rgba(239, 68, 68, .35), rgba(239, 68, 68, .14));
+    color: #fecaca; border: 1px solid rgba(248, 113, 113, .4);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+  }
   .btn.small { padding: 8px 14px; font-size: 13px; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .spacer { flex: 1; }
 
-  /* ---- поля ввода: тот же фон, что и у панелей ---- */
+  /* ---- поля ввода: стекло как у панелей, в фокусе мягкое свечение ---- */
   input[type=text], input[type=search], input[type=number], input[type=date], input[type=url], input[type=file], select, textarea {
-    width: 100%; padding: 13px 16px; border-radius: 16px; border: 1px solid var(--line);
-    background: var(--field); outline: none; font-size: 15px;
+    width: 100%; padding: 13px 16px; border-radius: 17px;
+    border: 1px solid var(--glass-line);
+    background: var(--field);
+    outline: none; font-size: 15px;
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .06);
+    transition: border-color .25s, box-shadow .25s, background .25s;
   }
+  input::placeholder, textarea::placeholder { color: rgba(235, 240, 252, .4); }
   input[type=file] { padding: 10px 12px; font-size: 14px; color: var(--muted); }
-  input:focus, select:focus, textarea:focus { border-color: rgba(255,255,255,.35); }
+  input:focus, select:focus, textarea:focus {
+    border-color: rgba(255, 255, 255, .42);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, .25), 0 0 0 4px rgba(255, 255, 255, .07);
+  }
   textarea { resize: vertical; min-height: 96px; }
+  select { appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23aab' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M7 10l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; background-size: 16px; padding-right: 40px; }
+  select option { background: #14141f; color: var(--text); }
   label.field { display: block; margin-bottom: 14px; }
   label.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .check { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 14px; }
-  .hint { color: var(--muted); font-size: 13px; line-height: 1.5; margin: -6px 0 14px; }
+  .check input { width: 20px; height: 20px; accent-color: #fff; }
+  .hint { color: var(--muted); font-size: 13px; line-height: 1.55; margin: -6px 0 14px; }
 
-  /* ---- сетка фильмов ---- */
+  /* ---- сетка видео ---- */
   input[type=search]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; cursor: pointer;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E") center / contain no-repeat; }
   #player { margin: 0 -20px; }
   #player .vp { border-radius: 0; }
   .search-idle { min-height: 40vh; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--muted); padding: 0; }
   .pager { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 32px 0 8px; }
-  .pg-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; padding: 0;
-    background: rgba(0,0,0,.45); color: var(--text); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .pg-btn {
+    width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; padding: 0;
+    background: var(--glass-bg); color: var(--text);
+    border: 1px solid var(--glass-line); border-top-color: var(--glass-hi);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .22);
+  }
   .pg-btn:disabled { opacity: .3; cursor: default; }
   .pg-btn svg { width: 20px; height: 20px; }
   .pg-count { min-width: 56px; text-align: center; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--muted); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 18px; }
   .card { cursor: pointer; text-decoration: none; }
   .cover {
-    position: relative; aspect-ratio: 2 / 3; border-radius: 20px; overflow: hidden;
-    background: var(--field); border: 1px solid rgba(255,255,255,.14);
-    box-shadow: 0 12px 30px rgba(0,0,0,.4);
+    position: relative; aspect-ratio: 2 / 3; border-radius: 22px; overflow: hidden;
+    background: var(--field); border: 1px solid rgba(255, 255, 255, .16);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .1);
   }
   .cover img { width: 100%; height: 100%; object-fit: cover; }
   .vip-badge {   /* как приписка VIP в профиле: золотой фон с бегущим белым бликом */
@@ -160,7 +248,9 @@
   .fav {
     position: absolute; right: 8px; top: 8px; width: 34px; height: 34px; padding: 0;
     display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
-    background: rgba(0,0,0,.45); color: #a1a1aa; opacity: 0; transition: opacity .18s, color .18s, transform .18s;
+    background: rgba(8, 10, 18, .5); color: #a1a1aa; opacity: 0; transition: opacity .18s, color .18s, transform .18s;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, .14);
   }
   .card:hover .fav, .fav:focus-visible { opacity: 1; }
   .fav.on { opacity: 1; color: #ef4444; }
@@ -169,14 +259,17 @@
   .fav.on svg { fill: currentColor; }
   .fav:active { transform: scale(.9); }
   @media (hover: none) { .fav { opacity: .9; } }
-  .card .title { margin: 12px 4px 2px; font-weight: 600; font-size: 15px; line-height: 1.3; }
+  .card .title { margin: 12px 4px 2px; font-weight: 620; font-size: 15px; line-height: 1.3; letter-spacing: -.01em; }
   .card .meta { margin: 0 4px; color: var(--muted); font-size: 13px; }
-  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .pill {
+    display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; color: var(--muted);
+    background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14);
+  }
   .pill.ok, .pill.wait { color: #fff; }
-  .pill.bad { color: #fca5a5; }
+  .pill.bad { color: #fca5a5; border-color: rgba(248, 113, 113, .35); background: rgba(239, 68, 68, .12); }
   .views-pill { margin-left: 10px; vertical-align: middle; font-weight: 400; }
 
-  /* ---- экран фильма: постер на фоне без чёрной подложки ---- */
+  /* ---- экран видео: постер на фоне без чёрной подложки ---- */
   .hero { position: relative; margin: 0; padding: 0 0 8px; }
   .hero-inner { display: grid; grid-template-columns: 150px 1fr; gap: 20px; align-items: end; }
   .hero .cover { border-radius: 18px; }
@@ -300,36 +393,37 @@
   .vp-ad-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(0,0,0,.6); pointer-events: none; }
   .vp-ad-bar i { display: block; height: 100%; width: 0; background: #facc15; }
   .vp.ad-on .vp-bar, .vp.ad-on .vp-subs { display: none; }
+
   .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .sec-head h2 { margin: 0; }
   .gold { color: var(--gold); letter-spacing: 2px; }
   .ava { position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: none;
-    background: var(--field); border: 1px solid var(--line); display: inline-grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--text); }
+    background: rgba(255, 255, 255, .09); border: 1px solid rgba(255, 255, 255, .18); display: inline-grid; place-items: center; font-weight: 650; font-size: 14px; color: var(--text) !important; }
   .ava-lg { width: 84px; height: 84px; font-size: 30px; border-radius: 50%; }
   .ava img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .linkbtn { background: none; border: 0; color: var(--text); text-decoration: underline; padding: 10px 0 0; font-size: 14px; cursor: pointer; }
-  .modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 20px;
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .modal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .55); display: grid; place-items: center; padding: 20px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   .modal { width: min(560px, 100%); max-height: 80vh; display: flex; flex-direction: column; overflow: hidden;
-    background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.16); border-top-color: rgba(255,255,255,.28);
-    border-radius: 28px; backdrop-filter: blur(34px) saturate(160%); -webkit-backdrop-filter: blur(34px) saturate(160%);
-    box-shadow: 0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.18); }
+    background: rgba(0,0,0,.62); border: 1px solid rgba(255, 255, 255, .18); border-top-color: rgba(255, 255, 255, .32);
+    border-radius: 30px; backdrop-filter: blur(36px) saturate(170%); -webkit-backdrop-filter: blur(36px) saturate(170%);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .22); }
   .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
-  .modal-head b { font-size: 17px; font-weight: 600; }
+  .modal-head b { font-size: 17px; font-weight: 620; letter-spacing: -.01em; }
   .modal-bg.no-line .modal-head { border-bottom: 0; padding-bottom: 4px; }
   .modal-body { padding: 6px 20px 20px; overflow-y: auto; }
-  .hist-card { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; padding: 10px; border-radius: 16px;
-    border: 1px solid var(--line); background: rgba(0,0,0,.5); color: var(--text); text-decoration: none; }
-  .hist-cover { width: 56px; height: 80px; flex: none; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,.06); }
+  .hist-card { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; padding: 10px; border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, .12); background: rgba(10, 12, 22, .4); color: var(--text); text-decoration: none; }
+  .hist-cover { width: 56px; height: 80px; flex: none; border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.06); }
   .hist-cover img { width: 100%; height: 100%; object-fit: cover; }
   .hist-info { display: grid; gap: 4px; min-width: 0; }
-  .hist-info b { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-info b { font-size: 16px; font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hist-info span { color: var(--muted); font-size: 13px; }
   .ep-list { padding: 6px 0; }
-  .ep-row { display: flex; align-items: center; gap: 12px; padding: 12px 18px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .ep-row { display: flex; align-items: center; gap: 12px; padding: 13px 18px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
   .ep-row:last-child { border-bottom: 0; }
-  .ep-row.on { background: var(--field); }
+  .ep-row.on { background: rgba(255, 255, 255, .09); }
   .ep-num { min-width: 28px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .ep-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ep-lock { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
@@ -375,8 +469,9 @@
   .vp-mrow.check.on { font-weight: 600; }
 
   .locked {
-    aspect-ratio: 16 / 9; border-radius: 20px; display: grid; place-items: center; text-align: center; padding: 24px;
-    background: var(--field); border: 1px solid var(--line);
+    aspect-ratio: 16 / 9; border-radius: 22px; display: grid; place-items: center; text-align: center; padding: 24px;
+    background: rgba(10, 12, 22, .4); border: 1px solid rgba(255, 255, 255, .13);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   .stars { display: inline-flex; gap: 4px; }
   .stars button { border: 0; background: none; font-size: 26px; line-height: 1; color: #52525b; padding: 0 2px; }
@@ -389,16 +484,17 @@
   .item .item-act { margin-top: 10px; display: flex; justify-content: flex-start; }
 
   /* ---- тикеты поддержки ---- */
-  /* обычный тикет в ожидании: чёрный фон и бело-серая обводка */
+  /* обычный тикет в ожидании: тёмное стекло со светлой обводкой */
   .tk-card {
     display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; text-decoration: none;
-    padding: 14px 16px; margin-bottom: 10px; border-radius: 18px; color: var(--text);
-    background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.3);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    padding: 14px 16px; margin-bottom: 10px; border-radius: 20px; color: var(--text);
+    background: rgba(8, 10, 18, .45); border: 1px solid rgba(255, 255, 255, .3);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .3);
   }
   .tk-num { min-width: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .tk-body { flex: 1; min-width: 0; }
-  .tk-body b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tk-body b { display: block; font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tk-body small { color: var(--muted); font-size: 12px; }
   .tk-kind { flex: none; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
   /* тикеты, переданные админам и владельцу, подсвечены по важности:
@@ -409,20 +505,21 @@
   .tk-card.bug .tk-kind { color: #f87171; border-color: rgba(248,113,113,.65); }
   .tk-card.anime, .tk-card.cartoon { background: rgba(74,222,128,.14); border-color: rgba(74,222,128,.65); }
   .tk-card.anime .tk-kind, .tk-card.cartoon .tk-kind { color: #4ade80; border-color: rgba(74,222,128,.65); }
-  /* шапка чата — тот же фон, что у нижней панели */
+  /* шапка чата — стекло, как у нижней панели */
   .tk-head {
     position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
-    margin: -28px -20px 16px; padding: 14px 20px;
-    background: var(--field); border-bottom: 1px solid var(--line);
-    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+    margin: -26px -20px 16px; padding: 14px 20px;
+    background: rgba(10, 12, 22, .5); border-bottom: 1px solid var(--glass-line);
+    backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%);
   }
   .tk-head > svg { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
     stroke-linecap: round; stroke-linejoin: round; }
-  .tk-head b { font-size: 16px; font-weight: 600; }
+  .tk-head b { font-size: 16px; font-weight: 620; }
   .tk-head .tk-id { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
   .tk-msgs { display: grid; gap: 10px; }
-  .tk-msg { max-width: 84%; padding: 10px 14px; border-radius: 18px; background: var(--field); border: 1px solid var(--line); }
-  .tk-msg.me { margin-left: auto; background: rgba(255,255,255,.12); }
+  .tk-msg { max-width: 84%; padding: 10px 14px; border-radius: 18px; background: rgba(10, 12, 22, .45); border: 1px solid var(--line);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .tk-msg.me { margin-left: auto; background: rgba(255, 255, 255, .13); border-color: rgba(255, 255, 255, .2); }
   .tk-msg .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .tk-msg p { margin: 0; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
   /* док поля ввода: поднят выше нижней панели, а прикреплённая картинка показывается
@@ -443,13 +540,15 @@
   .tk-input textarea { flex: 1; min-height: 46px; max-height: 110px; resize: none; margin: 0; }
   .tk-clip {
     flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
-    border: 1px solid var(--line); background: var(--field); color: var(--text); cursor: pointer; padding: 0;
+    border: 1px solid var(--glass-line); background: rgba(10, 12, 22, .5); color: var(--text); cursor: pointer; padding: 0;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   }
   .tk-clip svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8;
     stroke-linecap: round; stroke-linejoin: round; }
   .tk-go {
     flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
-    border: 0; background: #000; color: #fff; cursor: pointer; padding: 0;
+    border: 0; background: linear-gradient(180deg, #fff, #e8e8f0); color: #0c0c14; cursor: pointer; padding: 0;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .35), inset 0 1px 0 #fff;
   }
   .tk-go svg { width: 20px; height: 20px; fill: currentColor; }
   .tk-shot { display: block; max-width: 220px; border-radius: 14px; border: 1px solid var(--line); margin-top: 6px; }
@@ -464,7 +563,7 @@
   }
   .tour-card {
     position: fixed; z-index: 91; width: min(320px, calc(100% - 40px)); padding: 16px 16px 14px;
-    border-radius: 18px; background: #c9c9d1; color: #16161a; box-shadow: 0 18px 40px rgba(0,0,0,.5);
+    border-radius: 22px; background: #c9c9d1; color: #16161a; box-shadow: 0 18px 40px rgba(0,0,0,.5);
   }
   .tour-card b { display: block; margin: 0 26px 6px 0; font-size: 16px; }
   .tour-card p { margin: 0 0 14px; font-size: 14px; line-height: 1.45; color: #26262c; }
@@ -482,35 +581,104 @@
   /* ---- тосты, админка, планы ---- */
   .toast {
     position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 50;
-    background: var(--field); border: 1px solid var(--line); padding: 12px 18px; border-radius: 999px;
+    background: rgba(10, 12, 22, .6); border: 1px solid var(--glass-line); border-top-color: var(--glass-hi);
+    padding: 12px 18px; border-radius: 999px;
     font-size: 14px; max-width: calc(100% - 40px); text-align: center; display: none;
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .2);
   }
   .toast.show { display: block; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; font-size: 15px; }
-  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
-  .tabs button { border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; background: var(--field); color: var(--muted); font-size: 14px; }
-  .tabs button.on { background: #fff; color: #000; font-weight: 600; border-color: #fff; }
+  /* вкладки — как сегмент-контрол iOS: стеклянная дорожка, активный пункт — белая капсула */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 20px; padding: 4px; border-radius: 999px;
+    background: rgba(10, 12, 22, .45); border: 1px solid var(--glass-line);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button {
+    flex: 1 0 auto; border: 0; border-radius: 999px; padding: 9px 16px; background: transparent;
+    color: var(--muted); font-size: 14px; white-space: nowrap;
+  }
+  .tabs button.on {
+    background: linear-gradient(180deg, #fff, #e9e9f2); color: #101018; font-weight: 620;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .35), inset 0 1px 0 #fff;
+  }
   .list-row { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .list-row:last-child { border-bottom: 0; }
   .list-row .info { flex: 1; min-width: 160px; }
-  .list-row .info b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-row .info b { display: block; font-weight: 620; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .list-row .info small { color: var(--muted); font-size: 13px; }
-  .thumb { width: 44px; height: 64px; border-radius: 10px; overflow: hidden; background: var(--field); border: 1px solid var(--line); flex: none; }
+  .thumb { width: 44px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--field); border: 1px solid rgba(255, 255, 255, .14); flex: none; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .progress { height: 6px; background: var(--field); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 10px; display: none; }
-  .progress div { height: 100%; width: 0; background: #fff; transition: width .2s; }
+  .progress { height: 6px; background: rgba(255, 255, 255, .08); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 10px; display: none; }
+  .progress div { height: 100%; width: 0; background: linear-gradient(90deg, #fff, #d9d9e6); border-radius: 999px; transition: width .2s; }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
-  .stat { padding: 16px; border-radius: 18px; background: var(--field); border: 1px solid var(--line); }
-  .stat b { display: block; font-size: 22px; font-weight: 650; }
+  .stat { padding: 16px; border-radius: 20px; background: rgba(10, 12, 22, .42); border: 1px solid rgba(255, 255, 255, .12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+  .stat b { display: block; font-size: 22px; font-weight: 660; letter-spacing: -.01em; }
   .stat small { color: var(--muted); font-size: 13px; }
   .plans { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .plan { padding: 20px; border-radius: 22px; background: var(--field); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
-  .plan .price { font-size: 26px; font-weight: 700; }
+  .plan { padding: 20px; border-radius: 24px; background: var(--glass-bg); border: 1px solid var(--glass-line);
+    border-top-color: var(--glass-hi); display: flex; flex-direction: column; gap: 12px;
+    backdrop-filter: blur(24px) saturate(170%); -webkit-backdrop-filter: blur(24px) saturate(170%);
+    box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, .2); }
+  .plan .price { font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
   .plan small { color: var(--muted); font-size: 13px; line-height: 1.5; }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 999px;
+    background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); font-size: 13px; }
   .chip button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font-size: 13px; line-height: 1; padding: 0; }
+
+  /* ---- профиль: стеклянный герой с аватаром в светящемся кольце ---- */
+  .prof-hero { padding: 22px; margin-top: 8px; }
+  .prof-top { display: flex; align-items: center; gap: 18px; }
+  /* кольцо вокруг аватарки не должно обрезаться: снимаем клип, картинку округляем саму */
+  .prof-ava { position: relative; overflow: visible; }
+  .prof-ava img { border-radius: 50%; }
+  .prof-ava::before {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%; z-index: -1;
+    background: conic-gradient(from 120deg, rgba(255, 215, 0, .9), rgba(139, 92, 246, .8), rgba(56, 189, 248, .8), rgba(255, 215, 0, .9));
+    filter: blur(7px); opacity: .8; animation: ringSpin 7s linear infinite;
+  }
+  @keyframes ringSpin { to { transform: rotate(360deg); } }
+  .prof-ids { min-width: 0; }
+  .prof-ids h1 { margin: 0 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 24px; }
+  .prof-ids .sub { margin: 0; font-size: 14px; }
+  .prof-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; align-items: center; }
+  .id-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; font-size: 13px;
+    color: var(--muted); background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .13);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- админка → пользователи: компактные стеклянные полоски ---- */
+  .u-bar {
+    display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; text-decoration: none;
+    padding: 12px 16px; margin-bottom: 10px; border-radius: 22px; color: var(--text); border: 1px solid var(--glass-line);
+    border-top-color: var(--glass-hi); background: var(--glass-bg); cursor: pointer;
+    backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .2);
+    transition: transform .25s var(--spring), border-color .25s, background .25s;
+  }
+  .u-bar:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, .3); }
+  .u-bar:active { transform: scale(.985); }
+  .u-bar .ava { width: 46px; height: 46px; font-size: 18px; }
+  .u-info { flex: 1; min-width: 0; display: grid; gap: 3px; }
+  .u-info b { font-size: 16px; font-weight: 640; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .u-info small { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .u-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 46%; }
+  .u-bar .chev { width: 20px; height: 20px; flex: none; color: var(--muted); }
+  .u-bar .chev svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; }
+  /* ссылка «назад» над страницей пользователя */
+  .back-link { display: inline-flex; align-items: center; gap: 7px; border: 0; background: none; padding: 4px 2px 12px;
+    color: var(--muted); font-size: 14px; cursor: pointer; }
+  .back-link svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .back-link:hover { color: var(--text); }
 
   /* ==========================================================================
      VIP: бессрочный ∞, золотая приписка, градиентный ник
@@ -545,7 +713,10 @@
 
   .balance-pill {
     display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px;
-    border: 1px solid var(--line); background: var(--field); font-size: 14px;
+    border: 1px solid var(--glass-line); border-top-color: var(--glass-hi);
+    background: var(--glass-bg); font-size: 14px;
+    backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 8px 18px rgba(0, 0, 0, .25);
   }
   .balance-pill b { font-variant-numeric: tabular-nums; }
 
@@ -606,17 +777,17 @@
   .cover img { transition: transform .6s cubic-bezier(.2,.8,.2,1); }
   @keyframes badgeGlow { 0%, 100% { box-shadow: 0 0 0 rgba(255,215,0,0); } 50% { box-shadow: 0 0 14px rgba(255,215,0,.35); } }
   .btn { transition: transform .22s cubic-bezier(.2,.9,.3,1.3), opacity .2s, box-shadow .22s; }
-  .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+  .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,.35); }
   .btn:active:not(:disabled) { transform: translateY(0) scale(.97); }
-  .btn.ghost:hover:not(:disabled) { box-shadow: 0 8px 22px rgba(0,0,0,.25); }
+  .btn.ghost:hover:not(:disabled) { box-shadow: 0 10px 24px rgba(0,0,0,.25); }
   .plan, .stat, .hist-card, .list-row .glass { transition: transform .3s cubic-bezier(.2,.9,.3,1.2), border-color .3s; }
-  .plan:hover, .stat:hover { transform: translateY(-4px); border-color: rgba(255,255,255,.28); }
-  .hist-card:hover { transform: translateX(4px); border-color: rgba(255,255,255,.28); }
+  .plan:hover, .stat:hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, .3); }
+  .hist-card:hover { transform: translateX(4px); border-color: rgba(255, 255, 255, .3); }
   .ep-row.off { opacity: .55; cursor: default; pointer-events: none; }
   .ep-row { transition: background .2s, padding-left .25s cubic-bezier(.2,.9,.3,1.2); }
-  .ep-row:hover { background: var(--field); padding-left: 24px; }
+  .ep-row:hover { background: rgba(255, 255, 255, .07); padding-left: 24px; }
   .tabs button { transition: transform .2s, background .2s, color .2s; }
-  .tabs button:hover:not(.on) { transform: translateY(-2px); }
+  .tabs button:hover:not(.on) { color: var(--text); }
   .pill { transition: border-color .25s, color .25s; }
   /* одна мягкая кривая для всех интерактивных элементов: ничего не дёргается */
   .btn, .linkbtn, .pg-btn, .chip, .card, .plan, .stat, .hist-card, .list-row, .ep-row,
@@ -654,15 +825,21 @@
 
   /* редактор градиентного ника */
   .grad-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0; }
-  .grad-presets button { height: 42px; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; padding: 0; transition: transform .2s; }
+  .grad-presets button { height: 42px; border-radius: 14px; border: 1px solid var(--line); cursor: pointer; padding: 0; transition: transform .2s; }
   .grad-presets button:hover { transform: translateY(-3px) scale(1.04); }
   .grad-presets button.on { box-shadow: 0 0 0 2px #fff; }
   .grad-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
-  .grad-row input[type=color] { width: 52px; height: 42px; padding: 2px; border-radius: 12px; border: 1px solid var(--line); background: var(--field); }
+  .grad-row input[type=color] { width: 52px; height: 42px; padding: 2px; border-radius: 14px; border: 1px solid var(--line); background: var(--field); }
   .grad-row input[type=range] { width: 140px; padding: 0; border: 0; background: transparent; }
 
   .toast.show { display: block; animation: toastIn .42s cubic-bezier(.2,1.4,.4,1) both; }
   @keyframes toastIn { from { opacity: 0; transform: translate(-50%, -22px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+  /* меньше движения тем, кто просил об этом систему */
+  @media (prefers-reduced-motion: reduce) {
+    .fx { display: none; }
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
 
   @media (max-width: 480px) {
     .plans { grid-template-columns: 1fr; }
@@ -672,13 +849,17 @@
     .vp-btn { width: 36px; height: 36px; }
     .vp.fs .vp-time { display: none; }   /* место для ползунка громкости */
     .grad-presets { grid-template-columns: repeat(3, 1fr); }
+    .u-badges { display: none; }         /* на узком экране бейджи живут внутри профиля */
   }
 </style>
 </head>
 <body>
+<!-- цветные пятна за интерфейсом: в блюре стеклянных панелей играет цвет, как в iOS -->
+<div class="fx" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div class="wrap" id="app"><div class="empty">Загрузка…</div></div>
 
 <nav class="nav" id="nav">
+  <span class="nav-glider" id="navGlider" aria-hidden="true"></span>
   <button data-go="catalog" title="Каталог" aria-label="Каталог">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
   </button>
@@ -698,6 +879,8 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4" stroke-linecap="round"/></svg>
   </button>
 </nav>
+<!-- надпись вкладки, всплывающая над пальцем при ведении по нижней панели -->
+<span class="nav-tag" id="navTag" aria-hidden="true"></span>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -759,21 +942,40 @@
     ? `<span class="nick-gradient" style="--g:${esc(safeGrad(r.gradient))}">${esc(r.name)}</span>`
     : `<b>${esc(r.name)}</b>`;
 
+  // ---- подпись входа Telegram (initData) ----
+  // Источники по приоритету: скрипт Telegram → фрагмент ссылки #tgWebAppData →
+  // параметры клиента (Telegram.WebView.initParams) → мост TelegramWebviewProxy →
+  // копия, сохранённая в этой вкладке. Копия нужна приложению Telegram на ПК: оно
+  // подолгу показывает закэшированную страницу, где фрагмент уже заменён маршрутом,
+  // а родной скрипт подпись не отдаёт — без сохранённой копии вход «слетал».
+  const INIT_KEY = "film.tg.init";
   let initCache = "";
   function initData() {
     if (initCache) return initCache;
     const t = tg();
-    if (t && t.initData) { initCache = t.initData; return initCache; }
-    // часть клиентов (приложение Telegram на ПК, старые WebView) не подгружает скрипт
-    // Telegram вовремя — тогда подпись берём прямо из фрагмента ссылки #tgWebAppData=...
-    const m = /[#&]tgWebAppData=([^&]+)/.exec(location.hash || "");
-    if (m) initCache = decodeURIComponent(m[1]);
+    if (t && t.initData) initCache = t.initData;
+    if (!initCache) {
+      // часть клиентов (приложение Telegram на ПК, старые WebView) не подгружает скрипт
+      // Telegram вовремя — тогда подпись берём прямо из фрагмента ссылки #tgWebAppData=...
+      const m = /[#&]tgWebAppData=([^&]+)/.exec(location.hash || "");
+      if (m) {
+        try { initCache = decodeURIComponent(m[1]); } catch (_) { initCache = m[1]; }
+      }
+    }
+    if (!initCache) {
+      // сырое содержимое фрагмента от того же скрипта Telegram, если он уже разобрал его
+      try {
+        const p = window.Telegram && window.Telegram.WebView && window.Telegram.WebView.initParams;
+        if (p && p.tgWebAppData) initCache = p.tgWebAppData;
+      } catch (_) {}
+    }
+    if (initCache) { try { sessionStorage.setItem(INIT_KEY, initCache); } catch (_) {} }
+    else { try { initCache = sessionStorage.getItem(INIT_KEY) || ""; } catch (_) {} }
     return initCache;
   }
   // Приложение Telegram на Windows/macOS (и мобильные клиенты) само внедряет в страницу
-  // мост TelegramWebviewProxy: запрашиваем initData напрямую у него — внешний скрипт
-  // с telegram.org для входа больше не нужен (на ПК он часто не грузится, из-за чего
-  // приложение и писало «Откройте приложение из Telegram»)
+  // мост TelegramWebviewProxy: пробуем запросить initData напрямую у клиента — долго не
+  // ждём, дальше отработают фрагмент, сохранённая копия и поздняя доавторизация.
   function initDataFromProxy() {
     return new Promise((resolve) => {
       const proxy = window.TelegramWebviewProxy;
@@ -803,7 +1005,7 @@
         };
       } catch (_) {}
       try { proxy.postEvent("web_app_request_init_data"); } catch (_) { finish(""); }
-      setTimeout(() => finish(""), 2000);
+      setTimeout(() => finish(""), 1200);
     });
   }
   // тег <img> не умеет слать заголовки, поэтому подпись для картинок тикета едет в ?init=
@@ -876,6 +1078,7 @@
     if (parts[0] === "admin") {
       if (parts[1] === "upload") return { name: "admin", tab: "upload" };
       if (parts[1] === "film" && parts[2]) return { name: "admin", tab: "films", edit: parts[2] };
+      if (parts[1] === "user" && parts[2]) return { name: "admin", tab: "users", userId: parts[2] };
       if (parts[1] === "users" || parts[1] === "sales" || parts[1] === "ads") return { name: "admin", tab: parts[1] };
       return { name: "admin", tab: "films" };
     }
@@ -885,15 +1088,95 @@
 
   function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 
-  function setNav(name) {
+  // ---- нижняя панель: белая капсула под активной кнопкой + ведение пальцем ----
+  const navGlider = document.getElementById("navGlider");
+  const navTag = document.getElementById("navTag");
+  function activeNavBtn(name) {
+    let found = null;
     nav.querySelectorAll("button[data-go]").forEach((b) => {
-      b.classList.toggle("on", b.dataset.go === name || (name === "film" && b.dataset.go === "catalog"));
+      const on = b.dataset.go === name || (name === "film" && b.dataset.go === "catalog");
+      b.classList.toggle("on", on);
+      if (on) found = b;
     });
+    return found;
   }
-  nav.addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-go]");
-    if (b) go("#/" + b.dataset.go);
-  });
+  function glideTo(btn) {
+    if (!navGlider) return;
+    if (!btn || btn.classList.contains("hidden")) { navGlider.classList.remove("show"); return; }
+    navGlider.style.left = btn.offsetLeft + "px";
+    navGlider.style.width = btn.offsetWidth + "px";
+    navGlider.classList.add("show");
+  }
+  function setNav(name) { glideTo(activeNavBtn(name)); }
+  window.addEventListener("resize", () => glideTo(nav.querySelector("button.on")));
+
+  // Панель можно просто нажать, а можно зажать и вести пальцем: кнопка под пальцем
+  // подсвечивается и подпрыгивает, над пальцем плывёт её название, отпускание на
+  // кнопке (например, на профиле) сразу открывает эту вкладку.
+  (function navDrag() {
+    const haptic = () => {
+      try {
+        const t = tg();
+        if (t && t.HapticFeedback && typeof t.HapticFeedback.selectionChanged === "function") {
+          t.HapticFeedback.selectionChanged();
+        }
+      } catch (_) {}
+    };
+    let drag = null;
+    const btnAt = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      const b = el && el.closest ? el.closest("button[data-go]") : null;
+      return b && nav.contains(b) && !b.classList.contains("hidden") ? b : null;
+    };
+    const showTag = (x, btn) => {
+      if (!navTag || !btn) return;
+      navTag.textContent = btn.getAttribute("title") || btn.getAttribute("aria-label") || "";
+      const r = nav.getBoundingClientRect();
+      navTag.style.left = Math.max(46, Math.min(window.innerWidth - 46, x)) + "px";
+      navTag.style.top = (r.top - 12) + "px";
+      navTag.classList.add("show");
+    };
+    const hideTag = () => { if (navTag) navTag.classList.remove("show"); };
+    const pick = (btn) => {
+      nav.querySelectorAll("button[data-go]").forEach((b) => b.classList.toggle("pick", b === btn));
+      if (btn) glideTo(btn);
+    };
+    nav.addEventListener("contextmenu", (e) => { if (drag) e.preventDefault(); });
+    nav.addEventListener("pointerdown", (e) => {
+      const b = btnAt(e.clientX, e.clientY);
+      if (!b || (e.pointerType === "mouse" && e.button !== 0)) return;
+      drag = { id: e.pointerId, btn: b, x0: e.clientX, y0: e.clientY };
+      try { nav.setPointerCapture(e.pointerId); } catch (_) {}
+      nav.classList.add("grab");
+      pick(b);
+      showTag(e.clientX, b);
+      haptic();
+    });
+    nav.addEventListener("pointermove", (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const b = btnAt(e.clientX, e.clientY) || drag.btn;
+      if (b !== drag.btn) { drag.btn = b; haptic(); }
+      pick(drag.btn);
+      showTag(e.clientX, drag.btn);
+    });
+    const finish = (e, cancelled) => {
+      if (!drag || (e && e.pointerId !== drag.id)) return;
+      const btn = drag.btn;
+      drag = null;
+      nav.classList.remove("grab");
+      pick(null);
+      hideTag();
+      if (!cancelled && btn) go("#/" + btn.dataset.go);
+      else glideTo(nav.querySelector("button.on"));
+    };
+    nav.addEventListener("pointerup", (e) => finish(e, false));
+    nav.addEventListener("pointercancel", (e) => finish(e, true));
+    // с клавиатуры вкладки тоже переключаются
+    nav.addEventListener("keydown", (e) => {
+      const b = e.target.closest ? e.target.closest("button[data-go]") : null;
+      if (b && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); go("#/" + b.dataset.go); }
+    });
+  })();
 
   function stopPlayer() {
     if (S.player) { try { S.player.destroy(); } catch (_) {} S.player = null; }
@@ -935,6 +1218,7 @@
     S.me = await call("/api/me").catch(() => ({ guest: true }));
     S.me.guest = S.me.guest !== false;
     nav.querySelector("#navAdmin").classList.toggle("hidden", !S.me.canUpload);
+    setNav(S.route);  // кнопок стало больше или меньше — капсулу ставим заново
   }
   async function loadConfig() {
     S.config = (await call("/api/config").catch(() => null)) || { prices: { vipMonth: 100, vipYear: 900, editor: 500, admin: 2000 }, donate: [50, 100, 250, 500] };
@@ -2067,17 +2351,22 @@
     const nameLine = me.vipActive && me.nameGradient
       ? `<span class="nick-gradient" style="--g:${esc(safeGrad(me.nameGradient))}">${esc(me.name)}</span>`
       : esc(me.name);
+    // компактная стеклянная полоска: аватарка, ник и статус; детали — чипами ниже
     app.innerHTML = `
-      <div class="prof-head anim-in" style="display:flex;align-items:center;gap:18px;margin-bottom:10px">
-        <span class="ava ava-lg"><b>${initial}</b><img src="/api/avatar/${esc(me.id)}" alt="" onerror="this.remove()"></span>
-        <div style="min-width:0">
-          <h1 style="margin:0 0 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${nameLine}${me.vipActive ? vipTag() : ""}</h1>
-          <p class="sub" style="margin:0">${status}</p>
+      <section class="glass prof-hero anim-in">
+        <div class="prof-top">
+          <span class="ava ava-lg prof-ava"><b>${initial}</b><img src="/api/avatar/${esc(me.id)}" alt="" onerror="this.remove()"></span>
+          <div class="prof-ids">
+            <h1>${nameLine}${me.vipActive ? vipTag() : ""}</h1>
+            <p class="sub">${status}</p>
+          </div>
         </div>
-      </div>
-      <p class="sub">ID: ${esc(me.id)}</p>
-      ${me.vipActive ? `<div class="row" style="margin:4px 0 8px"><button class="btn ghost small" id="styleEdit">✦ Оформить ник градиентом</button></div>` : ""}
-      ${!me.guest ? `<p style="margin:0 0 10px"><span class="balance-pill">Звёзды на балансе: <b>${me.stars || 0}</b></span></p>` : ""}
+        <div class="prof-chips">
+          <span class="id-chip">ID ${esc(me.id)}</span>
+          <span class="balance-pill">Звёзды: <b>${me.stars || 0}</b></span>
+          ${me.vipActive ? `<button class="btn ghost small" id="styleEdit">✦ Оформить ник</button>` : ""}
+        </div>
+      </section>
       <section class="section anim-in anim-d1">
         <h2>История просмотров</h2>
         <div id="history"><div class="empty">Загрузка...</div></div>
@@ -2333,7 +2622,7 @@
     };
     if (tab === "films") await adminFilms(r.edit);
     if (tab === "upload") adminUpload();
-    if (tab === "users") await adminUsers();
+    if (tab === "users") await adminUsers(r.userId);
     if (tab === "ads") await adminAds();
     if (tab === "sales") await adminSales();
   }
@@ -2726,91 +3015,141 @@
     });
   }
 
-  async function adminUsers() {
+  // ---- пользователи: список — компактные стеклянные полоски (аватарка + ник) ----
+  const UCHEV = '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+  const UBACK = '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>';
+  const roleNameU = { user: "Пользователь", operator: "Оператор", editor: "Редактор", admin: "Админ", owner: "Владелец" };
+  function userBadges(u) {
+    const vip = u.vipForever
+      ? `<span class="pill">VIP <span class="vip-infinity">∞</span></span>`
+      : u.vipActive ? `<span class="pill">VIP до ${esc(fmtDate(u.vipUntil))}</span>` : "";
+    return `<span class="pill">${esc(roleNameU[u.role] || u.role)}</span>${vip}<span class="pill">${u.stars || 0} ★</span>${u.banned ? '<span class="pill bad">Забанен</span>' : ""}`;
+  }
+  function userBar(u) {
+    return `<button class="u-bar" data-uid="${u.id}">
+      ${avatarHtml(u.id, u.name)}
+      <span class="u-info"><b>${esc(u.name)}</b><small>ID ${u.id}</small></span>
+      <span class="u-badges">${userBadges(u)}</span>
+      <span class="chev">${UCHEV}</span>
+    </button>`;
+  }
+
+  async function adminUsers(userId) {
+    if (userId) return adminUserPage(userId);
     const box = $("#admin");
-    const isOwner = S.me.isOwner;
-    const roleName = { user: "Пользователь", operator: "Оператор", editor: "Редактор", admin: "Админ", owner: "Владелец" };
-    // звёзды начисляются прямо в строке пользователя: поле суммы и кнопка «Начислить»
     box.innerHTML = `<div class="row" style="margin-bottom:16px"><input type="search" id="uq" placeholder="ID, имя или @username" style="flex:1"></div>
+      <p class="hint">Нажмите на человека — откроется его профиль: там роль, VIP, звёзды и бан.</p>
       <div id="ulist"></div>`;
     const draw = async () => {
       const users = await call("/api/admin/users?q=" + encodeURIComponent($("#uq").value.trim())).catch(() => []);
-      $("#ulist").innerHTML = users.length ? users.map((u) => {
-        const roleOpts = isOwner ? ["user", "operator", "editor", "admin"] : ["user", "operator", "editor"];
-        const vipPill = u.vipForever
-          ? `<span class="pill">VIP <span class="vip-infinity">∞</span></span>`
-          : u.vipActive ? `<span class="pill">VIP до ${esc(fmtDate(u.vipUntil))}</span>` : "";
-        return `<div class="list-row" style="flex-direction:column;align-items:stretch">
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;width:100%">
-            <div class="info" style="flex:1"><b>${esc(u.name)}</b><small>ID ${u.id}</small></div>
-            <span class="row" style="gap:6px;flex-wrap:wrap">
-              <span class="pill">${roleName[u.role] || u.role}</span>${vipPill}<span class="pill">${u.stars || 0} ★</span>
-              ${u.banned ? '<span class="pill bad">Забанен</span>' : ""}
-            </span>
-          </div>
-          ${u.role === "owner" ? "" : `
-          <div class="adm-sec"><h3>Роль</h3>
-            <select data-role="${u.id}" style="max-width:220px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${roleName[r]}</option>`).join("")}</select>
-          </div>
-          <div class="adm-sec"><h3>VIP</h3>
-            <span class="row" style="gap:6px;flex-wrap:wrap">
-              <button class="btn ghost small" data-vip="${u.id}" data-days="1">1 день</button>
-              <button class="btn ghost small" data-vip="${u.id}" data-days="30">30 дней</button>
-              <button class="btn ghost small" data-vip="${u.id}" data-days="365">365 дней</button>
-              <button class="btn ghost small" data-vip-forever="${u.id}">Навсегда ∞</button>
-              ${u.vipActive ? `<button class="btn danger small" data-vip-revoke="${u.id}">Снять VIP</button>` : ""}
-            </span>
-          </div>
-          <div class="adm-sec"><h3>Звёзды</h3>
-            <span class="row" style="gap:6px">
-              <input type="number" data-star-id="${u.id}" placeholder="Сумма (минус — списание)" style="width:190px" min="-1000000" max="1000000">
-              <button class="btn ghost small" data-stars="${u.id}">Начислить</button>
-            </span>
-          </div>
-          <div class="adm-sec"><h3>Доступ</h3>
-            ${u.banned ? `<button class="btn small" data-unban="${u.id}">Разбанить</button>`
-                       : `<button class="btn danger small" data-ban="${u.id}">Забанить</button>`}
-          </div>`}
-        </div>`;
-      }).join("") : '<div class="empty">Никого не найдено</div>';
+      const list = $("#ulist");
+      if (!list) return;
+      list.innerHTML = users.length ? users.map(userBar).join("") : '<div class="empty">Никого не найдено</div>';
     };
     $("#uq").addEventListener("input", debounce(draw, 300));
+    box.onclick = (e) => {
+      const b = e.target.closest("[data-uid]");
+      if (b) go("#/admin/user/" + b.dataset.uid);
+    };
+    draw();
+  }
+
+  // Полноценный профиль пользователя: отдельная страница, где всё разложено по
+  // понятным блокам — у каждого подпись, что именно делает кнопка.
+  async function adminUserPage(id) {
+    const box = $("#admin");
+    box.innerHTML = '<div class="empty">Загрузка...</div>';
+    const users = await call("/api/admin/users?q=" + encodeURIComponent(String(id))).catch(() => null);
+    const u = (users || []).find((x) => String(x.id) === String(id));
+    if (!u) {
+      box.innerHTML = `<button class="back-link" id="uBack">${UBACK}Пользователи</button>
+        <div class="empty">Пользователь не найден. Вернитесь к списку и поищите по ID, имени или @username.</div>`;
+      $("#uBack").onclick = () => go("#/admin/users");
+      return;
+    }
+    const isOwner = S.me.isOwner;
+    const roleOpts = isOwner ? ["user", "operator", "editor", "admin"] : ["user", "operator", "editor"];
+    const vipState = u.vipForever ? "Сейчас: навсегда (∞). Снимается только полным отзывом."
+      : u.vipActive ? "Сейчас: до " + esc(fmtDate(u.vipUntil)) + ". Новый срок прибавляется к текущему."
+      : "Сейчас VIP нет.";
+    box.innerHTML = `
+      <button class="back-link" id="uBack">${UBACK}Пользователи</button>
+      <section class="glass prof-hero anim-in">
+        <div class="prof-top">
+          ${avatarHtml(u.id, u.name).replace('class="ava"', 'class="ava ava-lg prof-ava"')}
+          <div class="prof-ids"><h1>${esc(u.name)}</h1><p class="sub">ID: ${u.id}</p></div>
+        </div>
+        <div class="prof-chips">${userBadges(u)}</div>
+      </section>
+      ${u.role === "owner" ? `<div class="glass adm-card anim-in anim-d1">
+        <h2>Управление<small>Это владелец: его роль, VIP и доступ не меняются.</small></h2></div>` : `
+      <div class="glass adm-card anim-in anim-d1">
+        <h2>Роль<small>Выберите — применится сразу, пользователю придёт уведомление в боте.</small></h2>
+        <select data-role="${u.id}" style="max-width:280px">${roleOpts.map((r) => `<option value="${r}" ${u.role === r ? "selected" : ""}>${roleNameU[r]}</option>`).join("")}</select>
+        <p class="hint" style="margin:10px 0 0">Оператор отвечает на тикеты. Редактор добавляет и правит свои видео. Админ управляет пользователями и рекламой.</p>
+      </div>
+      <div class="glass adm-card anim-in anim-d2">
+        <h2>VIP-подписка<small>${vipState}</small></h2>
+        <div class="row" style="gap:8px">
+          <button class="btn ghost small" data-vip="${u.id}" data-days="1">+1 день</button>
+          <button class="btn ghost small" data-vip="${u.id}" data-days="30">+30 дней</button>
+          <button class="btn ghost small" data-vip="${u.id}" data-days="365">+365 дней</button>
+          <button class="btn ghost small" data-vip-forever="${u.id}">Навсегда ∞</button>
+          ${u.vipActive ? `<button class="btn danger small" data-vip-revoke="${u.id}">Снять VIP</button>` : ""}
+        </div>
+        <p class="hint" style="margin:10px 0 0">VIP: просмотр без рекламы, градиентный ник и два отзыва. «Навсегда» не истекает.</p>
+      </div>
+      <div class="glass adm-card anim-in anim-d2">
+        <h2>Звёзды<small>Внутренний баланс: на него пользователь покупает VIP в магазине.</small></h2>
+        <div class="row" style="gap:8px">
+          <input type="number" id="uStars" placeholder="Сумма (минус — списание)" style="flex:1;min-width:170px" min="-1000000" max="1000000">
+          <button class="btn ghost small" data-stars="${u.id}">Начислить</button>
+        </div>
+        <p class="hint" style="margin:10px 0 0">100 — начислит, −50 — спишет. Сейчас на балансе: <b>${u.stars || 0} ★</b>.</p>
+      </div>
+      <div class="glass adm-card anim-in anim-d3">
+        <h2>Доступ<small>${u.banned
+          ? "Пользователь заблокирован: закрыты каталог, просмотр и избранное; открыта только поддержка."
+          : "Бан закрывает весь сайт. Поддержка остаётся открытой, чтобы человек мог подать апелляцию."}</small></h2>
+        ${u.banned ? `<button class="btn" data-unban="${u.id}">Разбанить</button>`
+                   : `<button class="btn danger" data-ban="${u.id}">Забанить</button>`}
+      </div>`}`;
+    $("#uBack").onclick = () => go("#/admin/users");
     box.onchange = async (e) => {
       const sel = e.target.closest("select[data-role]");
       if (!sel) return;
       await call("/api/admin/role", { body: { id: Number(sel.dataset.role), role: sel.value } }).catch(() => null);
-      toast("Роль обновлена"); draw();
+      toast("Роль обновлена");
+      adminUserPage(id);
     };
     box.onclick = async (e) => {
       const b = e.target.closest("button[data-vip],button[data-vip-forever],button[data-vip-revoke],button[data-stars],button[data-ban],button[data-unban]");
       if (!b) return;
       if (b.dataset.ban || b.dataset.unban) {
-        const id = Number(b.dataset.ban || b.dataset.unban);
+        const uid = Number(b.dataset.ban || b.dataset.unban);
         const ban = !!b.dataset.ban;
         if (ban && !confirm("Забанить пользователя? Ему будет закрыт весь сайт, кроме поддержки.")) return;
-        await call("/api/admin/ban", { body: { id, banned: ban } }).catch(() => null);
+        await call("/api/admin/ban", { body: { id: uid, banned: ban } }).catch(() => null);
         toast(ban ? "Пользователь забанен" : "Бан снят");
-        return draw();
+        return adminUserPage(id);
       }
       if (b.dataset.vip) {
         await call("/api/admin/vip", { body: { id: Number(b.dataset.vip), days: Number(b.dataset.days) } }).catch(() => null);
-        toast("Готово"); draw();
+        toast("Готово"); adminUserPage(id);
       } else if (b.dataset.vipForever) {
         await call("/api/admin/vip", { body: { id: Number(b.dataset.vipForever), forever: true } }).catch(() => null);
-        toast("VIP выдан навсегда"); draw();
+        toast("VIP выдан навсегда"); adminUserPage(id);
       } else if (b.dataset.vipRevoke) {
         await call("/api/admin/vip", { body: { id: Number(b.dataset.vipRevoke), revoke: true } }).catch(() => null);
-        toast("VIP снят"); draw();
+        toast("VIP снят"); adminUserPage(id);
       } else if (b.dataset.stars) {
-        const inp = box.querySelector(`input[data-star-id="${b.dataset.stars}"]`);
-        const amount = Number(inp && inp.value);
+        const amount = Number(box.querySelector("#uStars") && box.querySelector("#uStars").value);
         if (!amount) { toast("Укажите сумму (можно минус)"); return; }
         const r = await api("/api/admin/stars", { body: { id: Number(b.dataset.stars), amount } });
         if (!r.ok) { toast(errText(r.data.error)); return; }
-        toast(`Баланс: ${r.data.stars} ★`); draw();
+        toast(`Баланс: ${r.data.stars} ★`); adminUserPage(id);
       }
     };
-    draw();
   }
 
   async function adminSales() {
@@ -2846,7 +3185,7 @@
     ["favorites", "Избранное", "Сюда попадает то, что вы отложили сердечком на обложке."],
     ["vip", "VIP", "Подписка: просмотр без рекламы, отзывы первыми и золотой ник."],
     ["support", "Поддержка", "Тикеты: опишите, что случилось или что добавить. Оператор отвечает прямо в чате тикета."],
-    ["profile", "Профиль", "Ваши звёзды, история просмотров и настройки."],
+    ["profile", "Профиль", "Ваши звёзды, история просмотров и настройки. Кстати: панель внизу можно вести пальцем — отпустите на вкладке, и она откроется."],
   ];
 
   function startTour() {
@@ -2907,12 +3246,29 @@
     if (t) { try { t.ready(); t.expand(); } catch (_) {} }
     const serviceHash = /tgWebApp/.test(location.hash);
     initData();  // кешируем подпись до того, как служебный фрагмент будет заменён
-    // ни скрипта, ни подписи в ссылке — спрашиваем initData у самого клиента Telegram
+    // ни скрипта, ни подписи в ссылке — пробуем спросить initData у самого клиента Telegram
     if (!initCache && window.TelegramWebviewProxy) initCache = await initDataFromProxy();
+    if (initCache) { try { sessionStorage.setItem(INIT_KEY, initCache); } catch (_) {} }
     await Promise.all([loadMe(), loadConfig()]);
     // hashchange сам вызовет render(): иначе первый экран рисуется дважды и дёргается
     if (!location.hash || serviceHash) location.hash = "#/catalog";
     else render();
+    startTour();
+    // Приложение Telegram на ПК: подпись может подъехать позже — внешний скрипт
+    // догружается с опозданием, а кэшированная страница восстанавливается без
+    // фрагмента. Дожидаемся её ещё немного и довходим, иначе вместо гостя всегда
+    // писалось бы «Откройте приложение из Telegram».
+    if (S.me.guest && !initCache) lateAuth();
+  }
+  async function lateAuth() {
+    for (let i = 0; i < 16 && S.me.guest && !initCache; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      initData();
+    }
+    if (!S.me.guest || !initCache) return;
+    await loadMe();
+    if (S.me.guest) return;
+    render();      // перерисовываем уже вошедшим: профиль, избранное и покупки доступны
     startTour();
   }
   // стартуем после defer-скриптов: DOMContentLoaded случится уже после них;

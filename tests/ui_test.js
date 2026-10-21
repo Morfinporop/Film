@@ -290,9 +290,40 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     d.querySelector("#admin h2").textContent.includes("Что добавляем"));
   w.location.hash = "#/admin/users";
   await sleep(400);
-  check("у забаненного видна кнопка «Разбанить»",
-    d.querySelector("#ulist").textContent.includes("Разбанить") &&
-    d.querySelector("#ulist").textContent.includes("Забанен"));
+  d = w.document;
+  check("пользователи — стеклянные полоски: аватарка + ник",
+    !!d.querySelector("#ulist .u-bar .ava") &&
+    d.querySelector("#ulist .u-bar .u-info b").textContent.includes("Тест Ю"));
+  check("на полоске виден бейдж «Забанен»",
+    d.querySelector("#ulist").textContent.includes("Забанен") &&
+    !d.querySelector("#ulist").textContent.includes("Начислить"));
+  d.querySelector("#ulist .u-bar").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await sleep(400);
+  check("по нажатию открывается полноценный профиль: роль, VIP, звёзды, «Разбанить»",
+    w.location.hash === "#/admin/user/7" &&
+    d.querySelector("#admin").textContent.includes("Разбанить") &&
+    d.querySelector("#admin").textContent.includes("VIP-подписка") &&
+    d.querySelector("#admin").textContent.includes("Звёзды") &&
+    d.querySelector("#admin").textContent.includes("Роль"),
+    w.location.hash);
+
+  // ---------- нижняя панель: капсула и ведение пальцем ----------
+  check("в панели есть бегущая белая капсула", !!d.querySelector(".nav-glider"));
+  check("панель ведётся pointer-событиями (зажал и повёл)",
+    html.includes('nav.addEventListener("pointerdown"') &&
+    html.includes('nav.addEventListener("pointermove"') &&
+    html.includes("elementFromPoint"));
+  check("над пальцем всплывает название вкладки", html.includes('id="navTag"') && html.includes("showTag"));
+  check("подпись входа кэшируется на вкладке (ПК с закэшированной страницей)",
+    html.includes("sessionStorage"));
+  check("есть поздняя доавторизация после подгрузки скрипта Telegram", html.includes("lateAuth"));
+
+  // ---------- профиль: стеклянная полоска с аватаркой и ником ----------
+  w.location.hash = "#/profile";
+  await sleep(400);
+  check("профиль — стеклянная полоска с аватаркой и ником",
+    !!w.document.querySelector(".prof-hero .ava-lg") &&
+    w.document.querySelector(".prof-hero").textContent.includes("Юзер"));
 
   // ---------- десктоп-приложение Telegram: подпись из фрагмента ссылки ----------
   const initStr = 'user=%7B%22id%22%3A5%7D&auth_date=1&hash=abc';

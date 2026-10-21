@@ -1297,7 +1297,14 @@ def embed_url(url: str) -> str:
 # ============================================================================
 # Авторизация Mini App (подпись initData)
 # ============================================================================
-def verify_init_data(init_data: str, token: str, max_age: int = 86400) -> dict | None:
+def verify_init_data(init_data: str, token: str) -> dict | None:
+    """Проверяем только HMAC-подпись Telegram, без срока годности auth_date.
+
+    Приложение Telegram на ПК (Windows/macOS) неделями показывает закэшированную
+    страницу Mini App по исходной ссылке: подпись там настоящая, но auth_date старый.
+    Из-за проверки «свежести» вход на ПК и падал с «Откройте приложение из Telegram».
+    Подписанные данные сами по себе доказывают, что человек открывал приложение из
+    Telegram, — этого достаточно, проверять давность не нужно."""
     if not init_data:
         return None
     from urllib.parse import parse_qsl
@@ -1309,8 +1316,6 @@ def verify_init_data(init_data: str, token: str, max_age: int = 86400) -> dict |
     check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
     secret = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
     if not hmac.compare_digest(hmac.new(secret, check.encode(), hashlib.sha256).hexdigest(), their_hash):
-        return None
-    if time.time() - int(pairs.get("auth_date", "0") or 0) > max_age:
         return None
     try:
         user = json.loads(pairs.get("user", "{}"))
